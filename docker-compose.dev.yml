@@ -1,0 +1,45 @@
+services:
+  golfcart-monolith:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: dy-golfcart-monolith
+    ports:
+      - "8000:8000"
+    environment:
+      # sample: MQTT Configuration
+      # - MQTT_HOST=emqx
+      # - MQTT_PORT=1883
+      # - MQTT_USERNAME=admin
+      # - MQTT_PASSWORD=public
+      # - MQTT_CLIENT_ID=dy-golfcart-monolith
+      # - MQTT_KEEPALIVE=60
+      # - MQTT_QOS=1
+      # - MQTT_RETAIN=false
+      # - MQTT_ENABLED=true
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:latest
+    container_name: dy-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=golfcart_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:

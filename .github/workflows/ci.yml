@@ -14,7 +14,7 @@ on:
 
 env:
   ECR_REGISTRY: 187509843329.dkr.ecr.ap-northeast-2.amazonaws.com
-  ECR_REPOSITORY: viadevelopers/dycrane-eyes-msa-crane/mqtt-adapter
+  ECR_REPOSITORY: viadevelopers/dyaf/monolith
   AWS_REGION: ap-northeast-2
 
 jobs:

@@ -1,0 +1,29 @@
+services:
+  golfcart-monolith:
+    image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG:-latest}
+    container_name: dy-golfcart-monolith
+    ports:
+      - "8000:8000"
+    environment:
+      # sample: MQTT Configuration
+      # - MQTT_HOST=${MQTT_HOST:-your-emqx-host}
+      # - MQTT_PORT=${MQTT_PORT:-1883}
+      # - MQTT_USERNAME=${MQTT_USERNAME:-}
+      # - MQTT_PASSWORD=${MQTT_PASSWORD:-}
+      # - MQTT_CLIENT_ID=${MQTT_CLIENT_ID:-dy-golfcart-monolith}
+      # - MQTT_KEEPALIVE=${MQTT_KEEPALIVE:-60}
+      # - MQTT_QOS=${MQTT_QOS:-1}
+      # - MQTT_RETAIN=${MQTT_RETAIN:-false}
+      # - MQTT_ENABLED=${MQTT_ENABLED:-true}
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
