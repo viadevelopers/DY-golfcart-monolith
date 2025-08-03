@@ -16,9 +16,9 @@ on:
 
 env:
   ECR_REGISTRY: 187509843329.dkr.ecr.ap-northeast-2.amazonaws.com
-  ECR_REPOSITORY: viadevelopers/dycrane-eyes-msa-crane/mqtt-adapter
+  ECR_REPOSITORY: viadevelopers/dyaf/monolith
   AWS_REGION: ap-northeast-2
-  DEPLOY_PATH: /opt/services/dy-crane-http-mqtt-adapter
+  DEPLOY_PATH: /opt/services/dy-golfcart-monolith
 
 jobs:
   checkout:
@@ -198,7 +198,7 @@ jobs:
           echo "Performing health check..."
           
           # Get the service port from docker-compose
-          SERVICE_PORT=$(docker compose -f docker-compose.prod.yml port mqtt-adapter 8000 2>/dev/null | cut -d':' -f2 || echo "8000")
+          SERVICE_PORT=$(docker compose -f docker-compose.prod.yml port golfcart-monolith 8000 2>/dev/null | cut -d':' -f2 || echo "8000")
           
           # Health check with retry
           for i in {1..10}; do
@@ -208,7 +208,7 @@ jobs:
               break
             elif [ $i -eq 10 ]; then
               echo "::error::Health check failed after 10 attempts"
-              docker compose -f docker-compose.prod.yml logs mqtt-adapter
+              docker compose -f docker-compose.prod.yml logs golfcart-monolith
               exit 1
             else
               echo "Health check attempt $i failed, retrying in 5 seconds..."
