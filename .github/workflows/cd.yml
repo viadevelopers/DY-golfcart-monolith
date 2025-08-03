@@ -1,0 +1,293 @@
+name: CD - Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to deploy (default: latest)'
+        required: false
+        default: 'latest'
+        type: string
+      force_deploy:
+        description: 'Force deployment even if image platform check fails'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  ECR_REGISTRY: 187509843329.dkr.ecr.ap-northeast-2.amazonaws.com
+  ECR_REPOSITORY: viadevelopers/dyaf/monolith
+  AWS_REGION: ap-northeast-2
+  DEPLOY_PATH: /opt/services/dy-golfcart-monolith
+
+jobs:
+  checkout:
+    runs-on: self-hosted
+    outputs:
+      tag: ${{ steps.set-tag.outputs.tag }}
+      image-exists: ${{ steps.check-image.outputs.exists }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            docker-compose.prod.yml
+          sparse-checkout-cone-mode: false
+
+      - name: Set deployment tag
+        id: set-tag
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "latest" ]; then
+            TAG="latest"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Deploying tag: ${TAG}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Check if image exists in ECR
+        id: check-image
+        run: |
+          TAG=${{ steps.set-tag.outputs.tag }}
+          if aws ecr describe-images \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --image-ids imageTag=${TAG} \
+            --region ${{ env.AWS_REGION }} > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Image ${TAG} found in ECR"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Image ${TAG} not found in ECR"
+          fi
+
+      - name: Prepare deployment directory
+        run: |
+          mkdir -p ${{ env.DEPLOY_PATH }}
+          cp docker-compose.prod.yml ${{ env.DEPLOY_PATH }}/
+
+  deploy:
+    runs-on: self-hosted
+    needs: checkout
+    if: needs.checkout.outputs.image-exists == 'true'
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Pull and verify image
+        id: verify-image
+        run: |
+          TAG=${{ needs.checkout.outputs.tag }}
+          IMAGE="${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${TAG}"
+          
+          echo "Pulling image: ${IMAGE}"
+          docker pull ${IMAGE}
+          
+          # Get current platform architecture
+          CURRENT_ARCH=$(uname -m)
+          if [ "$CURRENT_ARCH" = "x86_64" ]; then
+            PLATFORM="linux/amd64"
+          elif [ "$CURRENT_ARCH" = "aarch64" ] || [ "$CURRENT_ARCH" = "arm64" ]; then
+            PLATFORM="linux/arm64"
+          else
+            echo "::error::Unsupported architecture: $CURRENT_ARCH"
+            exit 1
+          fi
+          
+          echo "Current platform: ${PLATFORM}"
+          echo "current-platform=${PLATFORM}" >> $GITHUB_OUTPUT
+          
+          # Check if image supports current platform
+          if docker manifest inspect ${IMAGE} > /dev/null 2>&1; then
+            MANIFEST=$(docker manifest inspect ${IMAGE})
+            if echo "$MANIFEST" | jq -e ".manifests[] | select(.platform.architecture == \"$(echo $PLATFORM | cut -d'/' -f2)\" and .platform.os == \"$(echo $PLATFORM | cut -d'/' -f1)\")" > /dev/null; then
+              echo "Image supports current platform: ${PLATFORM}"
+              echo "platform-supported=true" >> $GITHUB_OUTPUT
+            else
+              echo "::warning::Image does not support current platform: ${PLATFORM}"
+              echo "platform-supported=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "::warning::Cannot inspect manifest, assuming single-platform image"
+            echo "platform-supported=unknown" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check platform compatibility
+        run: |
+          PLATFORM_SUPPORTED="${{ steps.verify-image.outputs.platform-supported }}"
+          FORCE_DEPLOY="${{ github.event.inputs.force_deploy }}"
+          
+          if [ "$PLATFORM_SUPPORTED" = "false" ] && [ "$FORCE_DEPLOY" != "true" ]; then
+            echo "::error::Image does not support current platform and force_deploy is not enabled"
+            echo "Current platform: ${{ steps.verify-image.outputs.current-platform }}"
+            echo "To deploy anyway, re-run with force_deploy=true"
+            exit 1
+          elif [ "$PLATFORM_SUPPORTED" = "false" ] && [ "$FORCE_DEPLOY" = "true" ]; then
+            echo "::warning::Forcing deployment despite platform incompatibility"
+          fi
+
+  update:
+    runs-on: self-hosted
+    needs: [checkout, deploy]
+    if: success()
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Deploy with Docker Compose
+        run: |
+          cd ${{ env.DEPLOY_PATH }}
+          
+          TAG=${{ needs.checkout.outputs.tag }}
+          export IMAGE_TAG=${TAG}
+          export ECR_REGISTRY=${{ env.ECR_REGISTRY }}
+          export ECR_REPOSITORY=${{ env.ECR_REPOSITORY }}
+          
+          echo "Starting deployment with tag: ${TAG}"
+          echo "Working directory: $(pwd)"
+          echo "Docker Compose file:"
+          cat docker-compose.prod.yml
+          
+          # Pull latest images
+          echo "Pulling latest images..."
+          docker compose -f docker-compose.prod.yml pull
+          
+          # Stop current services gracefully
+          echo "Stopping current services..."
+          docker compose -f docker-compose.prod.yml down --timeout 30
+          
+          # Start updated services
+          echo "Starting updated services..."
+          docker compose -f docker-compose.prod.yml up -d
+          
+          # Wait for services to be ready
+          echo "Waiting for services to be ready..."
+          sleep 10
+          
+          # Verify deployment
+          echo "Verifying deployment..."
+          docker compose -f docker-compose.prod.yml ps
+
+      - name: Health check
+        run: |
+          cd ${{ env.DEPLOY_PATH }}
+          
+          # Wait for application to start
+          echo "Performing health check..."
+          
+          # Get the service port from docker-compose
+          SERVICE_PORT=$(docker compose -f docker-compose.prod.yml port golfcart-monolith 8000 2>/dev/null | cut -d':' -f2 || echo "8000")
+          
+          # Health check with retry
+          for i in {1..10}; do
+            if curl -f http://localhost:${SERVICE_PORT}/health > /dev/null 2>&1; then
+              echo "Health check passed"
+              curl http://localhost:${SERVICE_PORT}/health
+              break
+            elif [ $i -eq 10 ]; then
+              echo "::error::Health check failed after 10 attempts"
+              docker compose -f docker-compose.prod.yml logs golfcart-monolith
+              exit 1
+            else
+              echo "Health check attempt $i failed, retrying in 5 seconds..."
+              sleep 5
+            fi
+          done
+
+      - name: Cleanup old images
+        run: |
+          echo "Cleaning up old Docker images..."
+          docker image prune -f
+          
+          # Remove untagged images older than 24 hours
+          docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.CreatedAt}}" | \
+            grep "${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}" | \
+            grep "<none>" | \
+            awk '{if ($4 < "24 hours ago") print $3}' | \
+            xargs -r docker rmi -f || true
+
+      - name: Deployment summary
+        run: |
+          echo "::notice::Deployment completed successfully"
+          echo "Deployed tag: ${{ needs.checkout.outputs.tag }}"
+          echo "ECR Repository: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}"
+          echo "Deployment path: ${{ env.DEPLOY_PATH }}"
+          
+          cd ${{ env.DEPLOY_PATH }}
+          echo "Running services:"
+          docker compose -f docker-compose.prod.yml ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+  rollback-on-failure:
+    runs-on: self-hosted
+    needs: [checkout, deploy, update]
+    if: failure() && needs.checkout.outputs.image-exists == 'true'
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Rollback deployment
+        run: |
+          cd ${{ env.DEPLOY_PATH }}
+          
+          echo "Deployment failed, attempting rollback..."
+          
+          # Try to restart with previous configuration
+          export IMAGE_TAG=latest
+          export ECR_REGISTRY=${{ env.ECR_REGISTRY }}
+          export ECR_REPOSITORY=${{ env.ECR_REPOSITORY }}
+          
+          docker compose -f docker-compose.prod.yml down --timeout 30
+          docker compose -f docker-compose.prod.yml up -d
+          
+          echo "::error::Deployment failed and rollback attempted"
+          echo "Please check the logs and manual intervention may be required"
+
+  image-not-found:
+    runs-on: self-hosted
+    needs: checkout
+    if: needs.checkout.outputs.image-exists == 'false'
+    steps:
+      - name: Report image not found
+        run: |
+          TAG=${{ needs.checkout.outputs.tag }}
+          echo "::error::Image not found in ECR"
+          echo "Requested tag: ${TAG}"
+          echo "ECR Repository: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}"
+          echo ""
+          echo "Available tags:"
+          aws ecr list-images \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --query 'imageIds[*].imageTag' \
+            --output table \
+            --region ${{ env.AWS_REGION }} || echo "Failed to list available tags"
+          
+          exit 1
