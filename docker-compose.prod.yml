@@ -3,15 +3,11 @@ services:
     image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG:-latest}
     container_name: dy-golfcart-monolith
     ports:
-      - "8000:8000"
+      - "59091:8000"
     environment:
-      # Keycloak Configuration
-      - KEYCLOAK_SERVER_URL=${KEYCLOAK_SERVER_URL:-http://localhost:8080}
-      - KEYCLOAK_REALM_NAME=${KEYCLOAK_REALM_NAME:-your-realm}
-      - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-your-client-id}
-      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET:-your-client-secret}
-      # Database Configuration (if needed)
-      - DATABASE_URL=${DATABASE_URL:-postgresql://keycloak:password@localhost/golfcart}
+      - ENVIRONMENT=production
+    env_file:
+      - .env.production
     restart: unless-stopped
     logging:
       driver: "json-file"
