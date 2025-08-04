@@ -5,16 +5,13 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # sample: MQTT Configuration
-      # - MQTT_HOST=${MQTT_HOST:-your-emqx-host}
-      # - MQTT_PORT=${MQTT_PORT:-1883}
-      # - MQTT_USERNAME=${MQTT_USERNAME:-}
-      # - MQTT_PASSWORD=${MQTT_PASSWORD:-}
-      # - MQTT_CLIENT_ID=${MQTT_CLIENT_ID:-dy-golfcart-monolith}
-      # - MQTT_KEEPALIVE=${MQTT_KEEPALIVE:-60}
-      # - MQTT_QOS=${MQTT_QOS:-1}
-      # - MQTT_RETAIN=${MQTT_RETAIN:-false}
-      # - MQTT_ENABLED=${MQTT_ENABLED:-true}
+      # Keycloak Configuration
+      - KEYCLOAK_SERVER_URL=${KEYCLOAK_SERVER_URL:-http://localhost:8080}
+      - KEYCLOAK_REALM_NAME=${KEYCLOAK_REALM_NAME:-your-realm}
+      - KEYCLOAK_CLIENT_ID=${KEYCLOAK_CLIENT_ID:-your-client-id}
+      - KEYCLOAK_CLIENT_SECRET=${KEYCLOAK_CLIENT_SECRET:-your-client-secret}
+      # Database Configuration (if needed)
+      - DATABASE_URL=${DATABASE_URL:-postgresql://keycloak:password@localhost/golfcart}
     restart: unless-stopped
     logging:
       driver: "json-file"
