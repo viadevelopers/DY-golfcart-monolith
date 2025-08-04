@@ -3,13 +3,13 @@ name: CI - Build and Push Multi-Platform Images
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build and push'
+        description: "Tag to build and push"
         required: true
-        default: 'v1.0.0'
+        default: "v1.0.0"
         type: string
 
 env:
@@ -128,6 +128,9 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          build-args: |
+            BUILDKIT_STEP_LOG_MAX_SIZE=50000000
+            BUILDKIT_STEP_LOG_MAX_SPEED=50000000
           file: ./Dockerfile.prod
           platforms: linux/arm64
           push: true
@@ -154,7 +157,7 @@ jobs:
       - name: Create and push multi-platform manifest
         run: |
           TAG=${{ needs.checkout.outputs.tag }}
-          
+
           # Create multi-platform manifest
           docker buildx imagetools create \
             --tag ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${TAG} \
@@ -185,17 +188,17 @@ jobs:
         run: |
           TAG=${{ needs.checkout.outputs.tag }}
           PREVIOUS_TAG=${{ needs.checkout.outputs.previous-tag }}
-          
+
           echo "Build failed for tag: ${TAG}"
           echo "Rolling back latest to: ${PREVIOUS_TAG}"
-          
+
           # Tag failed build
           if docker manifest inspect ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${TAG} > /dev/null 2>&1; then
             docker buildx imagetools create \
               --tag ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${TAG}-failed \
               ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${TAG}
           fi
-          
+
           # Rollback latest to previous version
           if [ "${PREVIOUS_TAG}" != "latest" ] && [ -n "${PREVIOUS_TAG}" ]; then
             docker buildx imagetools create \
