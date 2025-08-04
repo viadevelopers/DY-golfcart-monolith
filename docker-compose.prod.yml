@@ -7,7 +7,7 @@ services:
     environment:
       - ENVIRONMENT=production
     env_file:
-      - .env.production
+      - .env.prod
     restart: unless-stopped
     logging:
       driver: "json-file"
