@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth, protected, golf_carts
-from app.config import get_settings
+from app.routers import auth
+from app.routers import golf_carts
 from app.database import engine
 from app.models import golf_cart
 
@@ -22,9 +22,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(golf_carts.router, prefix="/api/v1")
 app.include_router(auth.router)
-app.include_router(protected.router)
-app.include_router(golf_carts.router)
 
 
 @app.get("/")
