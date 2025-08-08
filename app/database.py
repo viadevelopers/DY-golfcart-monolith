@@ -24,8 +24,17 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 def get_db():
+    """
+    Database session factory with automatic transaction management.
+    
+    Commits on success, rolls back on failure.
+    """
     db = SessionLocal()
     try:
         yield db
+        db.commit()  # Commit if no exception occurred
+    except Exception:
+        db.rollback()  # Rollback on any exception
+        raise  # Re-raise the exception
     finally:
         db.close()
