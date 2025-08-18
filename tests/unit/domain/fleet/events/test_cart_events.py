@@ -3,7 +3,7 @@
 import pytest
 from uuid import uuid4
 from freezegun import freeze_time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.domain.fleet.events import (
     CartRegistered,
@@ -154,10 +154,11 @@ class TestCartEvents:
             MaintenanceRequired(cart_id, "Test")
         ]
         
+        expected_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
         for event in events:
-            assert event.occurred_at == datetime(2024, 1, 1, 12, 0, 0)
+            assert event.occurred_at == expected_time
             event_dict = event.to_dict()
-            assert event_dict["occurred_at"] == "2024-01-01T12:00:00"
+            assert event_dict["occurred_at"] == "2024-01-01T12:00:00+00:00"
     
     def test_event_serialization(self, cart_id):
         """Test event serialization to dictionary."""

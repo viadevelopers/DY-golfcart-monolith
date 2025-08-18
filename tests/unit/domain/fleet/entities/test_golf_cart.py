@@ -1,7 +1,7 @@
 """Unit tests for GolfCart entity."""
 
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 from freezegun import freeze_time
 
@@ -43,7 +43,7 @@ class TestGolfCart:
             position=Position(37.0, -122.0),
             battery=Battery(80.0),
             status=CartStatus.IDLE,
-            last_maintenance=datetime.utcnow()  # Recent maintenance
+            last_maintenance=datetime.now(timezone.utc)  # Recent maintenance
         )
     
     def test_new_cart_creation(self, cart_number):
@@ -66,7 +66,7 @@ class TestGolfCart:
     
     def test_existing_cart_creation(self, cart_number, sample_uuid):
         """Test creating cart from existing data."""
-        last_maintenance = datetime.utcnow() - timedelta(days=10)
+        last_maintenance = datetime.now(timezone.utc) - timedelta(days=10)
         cart = GolfCart(
             cart_number=cart_number,
             entity_id=sample_uuid,
@@ -104,7 +104,7 @@ class TestGolfCart:
             cart_number=cart_number,
             status=CartStatus.CHARGING,
             battery=Battery(50.0),
-            last_maintenance=datetime.utcnow()  # Recent maintenance
+            last_maintenance=datetime.now(timezone.utc)  # Recent maintenance
         )
         cart.pull_events()  # Clear registration event
         
@@ -138,7 +138,7 @@ class TestGolfCart:
         """Test starting trip when maintenance is needed."""
         cart = GolfCart(
             cart_number=cart_number,
-            last_maintenance=datetime(2023, 11, 1)  # 2 months ago
+            last_maintenance=datetime(2023, 11, 1, tzinfo=timezone.utc)  # 2 months ago
         )
         
         with pytest.raises(BusinessRuleViolation) as exc:
@@ -149,7 +149,7 @@ class TestGolfCart:
         """Test successfully stopping a trip."""
         cart = GolfCart(
             cart_number=cart_number,
-            last_maintenance=datetime.utcnow()  # Recent maintenance
+            last_maintenance=datetime.now(timezone.utc)  # Recent maintenance
         )
         cart.pull_events()  # Clear registration
         
@@ -194,7 +194,7 @@ class TestGolfCart:
         """Test battery consumption during movement."""
         cart = GolfCart(
             cart_number=cart_number,
-            last_maintenance=datetime.utcnow()  # Recent maintenance
+            last_maintenance=datetime.now(timezone.utc)  # Recent maintenance
         )
         cart.start_trip()
         cart.pull_events()  # Clear events
@@ -222,7 +222,7 @@ class TestGolfCart:
         """Test that charging while running is not allowed."""
         cart = GolfCart(
             cart_number=cart_number,
-            last_maintenance=datetime.utcnow()  # Recent maintenance
+            last_maintenance=datetime.now(timezone.utc)  # Recent maintenance
         )
         cart.start_trip()
         
@@ -264,7 +264,7 @@ class TestGolfCart:
         """Test decommissioning stops running cart first."""
         cart = GolfCart(
             cart_number=cart_number,
-            last_maintenance=datetime.utcnow()  # Recent maintenance
+            last_maintenance=datetime.now(timezone.utc)  # Recent maintenance
         )
         cart.start_trip()
         cart.decommission()
@@ -280,7 +280,7 @@ class TestGolfCart:
         low_battery_cart = GolfCart(
             cart_number=CartNumber("CART002"),
             battery=Battery(15.0),
-            last_maintenance=datetime.utcnow()
+            last_maintenance=datetime.now(timezone.utc)
         )
         assert low_battery_cart.can_accept_reservation() is False
         
@@ -288,7 +288,7 @@ class TestGolfCart:
         running_cart = GolfCart(
             cart_number=CartNumber("CART003"),
             status=CartStatus.RUNNING,
-            last_maintenance=datetime.utcnow()
+            last_maintenance=datetime.now(timezone.utc)
         )
         assert running_cart.can_accept_reservation() is False
     
@@ -327,7 +327,7 @@ class TestGolfCart:
         cart = GolfCart(
             cart_number=cart_number,
             battery=Battery(19.0),
-            last_maintenance=datetime.utcnow()
+            last_maintenance=datetime.now(timezone.utc)
         )
         
         with pytest.raises(BusinessRuleViolation) as exc:
@@ -344,7 +344,7 @@ class TestGolfCart:
         cart = GolfCart(
             cart_number=cart_number,
             battery=Battery(9.0),
-            last_maintenance=datetime.utcnow()
+            last_maintenance=datetime.now(timezone.utc)
         )
         
         with pytest.raises(BusinessRuleViolation) as exc:

@@ -1,7 +1,7 @@
 """Unit tests for base Entity class."""
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 from freezegun import freeze_time
 
@@ -53,12 +53,14 @@ class TestEntity:
         """Test entity timestamp management."""
         entity = ConcreteEntity()
         
-        assert entity.created_at == datetime(2024, 1, 1, 12, 0, 0)
+        expected_time = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        assert entity.created_at == expected_time
         assert entity.updated_at is None
         
         with freeze_time("2024-01-01 13:00:00"):
             entity.mark_updated()
-            assert entity.updated_at == datetime(2024, 1, 1, 13, 0, 0)
+            expected_updated_time = datetime(2024, 1, 1, 13, 0, 0, tzinfo=timezone.utc)
+            assert entity.updated_at == expected_updated_time
     
     def test_entity_equality(self, sample_uuid):
         """Test entity equality based on ID."""
