@@ -1,6 +1,6 @@
 """Golf Cart domain entity with rich business logic."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -118,7 +118,7 @@ class GolfCart(Entity):
             )
         
         self._change_status(CartStatus.RUNNING)
-        self._trip_started_at = datetime.utcnow()
+        self._trip_started_at = datetime.now(timezone.utc)
         self._raise_event(CartStarted(self.id, self._position))
         self.mark_updated()
     
@@ -131,7 +131,7 @@ class GolfCart(Entity):
         
         trip_duration = None
         if self._trip_started_at:
-            trip_duration = int((datetime.utcnow() - self._trip_started_at).total_seconds())
+            trip_duration = int((datetime.now(timezone.utc) - self._trip_started_at).total_seconds())
         
         self._change_status(CartStatus.IDLE)
         self._velocity = Velocity(0.0)
@@ -163,7 +163,7 @@ class GolfCart(Entity):
         if new_velocity.is_moving():
             self._consume_battery()
         
-        self._last_position_update = datetime.utcnow()
+        self._last_position_update = datetime.now(timezone.utc)
         self._raise_event(PositionUpdated(
             self.id, old_position, new_position, velocity
         ))
@@ -209,7 +209,7 @@ class GolfCart(Entity):
                 "Cart is not in maintenance mode."
             )
         
-        self._last_maintenance = datetime.utcnow()
+        self._last_maintenance = datetime.now(timezone.utc)
         self._battery = Battery(100.0)  # Full charge after maintenance
         self._change_status(CartStatus.IDLE)
         self.mark_updated()
@@ -237,7 +237,7 @@ class GolfCart(Entity):
         """Consume battery based on usage."""
         # Calculate consumption based on time since last update
         if self._last_position_update:
-            hours_elapsed = (datetime.utcnow() - self._last_position_update).total_seconds() / 3600
+            hours_elapsed = (datetime.now(timezone.utc) - self._last_position_update).total_seconds() / 3600
             consumption = self.BATTERY_CONSUMPTION_RATE * hours_elapsed * (self._velocity.speed / 20.0)
             
             old_battery = self._battery
@@ -252,7 +252,7 @@ class GolfCart(Entity):
     def _check_idle_timeout(self) -> None:
         """Check if cart has been idle too long and should stop trip."""
         if self._last_position_update:
-            idle_time = datetime.utcnow() - self._last_position_update
+            idle_time = datetime.now(timezone.utc) - self._last_position_update
             if idle_time > timedelta(minutes=self.MAX_IDLE_TIME_MINUTES):
                 self.stop_trip()
     
@@ -261,7 +261,7 @@ class GolfCart(Entity):
         if not self._last_maintenance:
             return True
         
-        days_since_maintenance = (datetime.utcnow() - self._last_maintenance).days
+        days_since_maintenance = (datetime.now(timezone.utc) - self._last_maintenance).days
         return days_since_maintenance >= self.MAINTENANCE_INTERVAL_DAYS
     
     # Domain service helpers

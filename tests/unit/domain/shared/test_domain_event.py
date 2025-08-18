@@ -1,7 +1,7 @@
 """Unit tests for DomainEvent class."""
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from freezegun import freeze_time
 
@@ -33,7 +33,7 @@ class TestDomainEvent:
         
         assert event.aggregate_id == sample_uuid
         assert isinstance(event.event_id, UUID)
-        assert event.occurred_at == datetime(2024, 1, 1, 12, 0, 0)
+        assert event.occurred_at == datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
         assert event.message == "test message"
         assert event.value == 42
     
@@ -52,7 +52,7 @@ class TestDomainEvent:
         assert "event_id" in event_dict
         assert event_dict["event_name"] == "ConcreteEvent"
         assert event_dict["aggregate_id"] == str(sample_uuid)
-        assert event_dict["occurred_at"] == "2024-01-01T12:00:00"
+        assert event_dict["occurred_at"] == "2024-01-01T12:00:00+00:00"
         assert event_dict["payload"] == {
             "message": "test message",
             "value": 42

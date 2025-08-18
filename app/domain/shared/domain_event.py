@@ -1,7 +1,7 @@
 """Base Domain Event class for DDD implementation."""
 
 from abc import ABC
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from typing import Any, Dict
 
@@ -12,7 +12,7 @@ class DomainEvent(ABC):
     def __init__(self, aggregate_id: UUID):
         self.event_id = uuid4()
         self.aggregate_id = aggregate_id
-        self.occurred_at = datetime.utcnow()
+        self.occurred_at = datetime.now(timezone.utc)
     
     @property
     def event_name(self) -> str:

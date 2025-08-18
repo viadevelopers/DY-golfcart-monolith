@@ -1,6 +1,6 @@
 from sqlalchemy import Column, String, Float, DateTime, Enum as SQLEnum
 from sqlalchemy.sql import func
-from sqlalchemy.dialects.postgresql import UUID
+from app.models.custom_types import UUID
 import uuid
 from app.database import Base
 from app.domain.shared.cart_status import CartStatus
@@ -8,7 +8,7 @@ from app.domain.shared.cart_status import CartStatus
 class GolfCart(Base):
     __tablename__ = "golf_carts"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(UUID, primary_key=True, default=uuid.uuid4)
     cart_number = Column(String, unique=True, nullable=False, index=True)
     position_lat = Column(Float, nullable=False, default=0.0)
     position_lng = Column(Float, nullable=False, default=0.0)
