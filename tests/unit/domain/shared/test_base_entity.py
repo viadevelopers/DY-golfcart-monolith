@@ -59,6 +59,7 @@ class TestEntity:
         
         with freeze_time("2024-01-01 13:00:00"):
             entity.mark_updated()
+
             expected_updated_time = datetime(2024, 1, 1, 13, 0, 0, tzinfo=timezone.utc)
             assert entity.updated_at == expected_updated_time
     
