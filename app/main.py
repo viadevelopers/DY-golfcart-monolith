@@ -1,17 +1,36 @@
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import auth
 from app.routers import golf_carts
 from app.database import engine
 from app.models import golf_cart
+from app.application.fleet.dependencies import get_event_dispatcher
 
 # Create database tables
 golf_cart.Base.metadata.create_all(bind=engine)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Application lifespan manager.
+
+    This context manager will run startup and shutdown logic.
+    """
+    print("Starting up...")
+    # Start the event dispatcher in the background
+    dispatcher = get_event_dispatcher()
+    asyncio.create_task(dispatcher.start())
+    yield
+    print("Shutting down...")
+
+
 app = FastAPI(
     title="Golf Cart Management System",
     description="FastAPI application with Keycloak authentication and golf cart management",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 app.add_middleware(

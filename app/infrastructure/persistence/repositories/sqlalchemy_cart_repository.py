@@ -12,13 +12,15 @@ from app.domain.fleet.entities import GolfCart
 from app.domain.fleet.value_objects import CartNumber, Position, Battery, Velocity
 from app.domain.shared.cart_status import CartStatus
 from app.models.golf_cart import GolfCart as GolfCartModel
+from app.infrastructure.event_bus import EventBus
 
 
 class SQLAlchemyCartRepository(GolfCartRepository):
     """SQLAlchemy implementation of GolfCartRepository."""
-    
-    def __init__(self, db: Session):
+
+    def __init__(self, db: Session, event_bus: EventBus):
         self.db = db
+        self.event_bus = event_bus
     
     async def get_by_id(self, cart_id: UUID) -> Optional[GolfCart]:
         """Get cart by ID."""
@@ -96,9 +98,10 @@ class SQLAlchemyCartRepository(GolfCartRepository):
         self.db.flush()  # Flush to get the ID without committing
         self.db.refresh(db_cart)
         
-        # Process domain events (in a real system, you'd publish these)
+        # Process domain events
         events = cart.pull_events()
-        # TODO: Publish events to event bus
+        for event in events:
+            await self.event_bus.publish(event)
         
         return self._to_domain(db_cart)
     
