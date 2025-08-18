@@ -59,3 +59,14 @@ def sample_cart_status():
 def fixed_datetime():
     """Provide a fixed datetime for testing."""
     return datetime(2024, 1, 1, 12, 0, 0)
+
+
+import os
+
+def pytest_configure(config):
+    """Set environment variables before test collection."""
+    os.environ["KEYCLOAK_SERVER_URL"] = "http://localhost:8080"
+    os.environ["KEYCLOAK_REALM_NAME"] = "test-realm"
+    os.environ["KEYCLOAK_CLIENT_ID"] = "test-client"
+    os.environ["KEYCLOAK_CLIENT_SECRET"] = "test-secret"
+    os.environ["DATABASE_URL"] = "postgresql://test:test@localhost/test_db"
