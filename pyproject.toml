@@ -1,0 +1,16 @@
+[project]
+name = "golfcart-api"
+version = "0.1.0"
+description = "A FastAPI application for the Golf Cart API."
+readme = "README.md"
+requires-python = ">=3.9"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+exclude = ["tests*"]
+namespaces = false
