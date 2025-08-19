@@ -73,6 +73,7 @@ jobs:
         run: |
           mkdir -p ${{ env.DEPLOY_PATH }}
           cp docker-compose.prod.yml ${{ env.DEPLOY_PATH }}/
+          cp .env* ${{ env.DEPLOY_PATH }}/
 
   deploy:
     runs-on: self-hosted
