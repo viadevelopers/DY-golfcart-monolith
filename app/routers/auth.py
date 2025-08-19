@@ -1,50 +1,55 @@
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import RedirectResponse
-from app.services.keycloak import keycloak_service
-from app.config import get_settings
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordRequestForm
+from app.services import auth_service
+from app.core.security import create_access_token, create_refresh_token
+from app.schemas import LoginResponse, Token, RefreshTokenRequest, SuccessResponse, User
 
+router = APIRouter()
 
-router = APIRouter(prefix="/auth", tags=["authentication"])
+@router.post("/login", response_model=LoginResponse)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    """
+    User login to get access and refresh tokens.
+    """
+    user_dict = await auth_service.authenticate_user(
+        email=form_data.username, password=form_data.password
+    )
+    if not user_dict:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="이메일 또는 비밀번호가 올바르지 않습니다",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
+    # The service returns a dict, we cast it to the Pydantic model
+    user = User(**user_dict)
 
-@router.get("/login")
-async def login(redirect_uri: str = Query(...)):
-    login_url = keycloak_service.get_login_url(redirect_uri)
-    return RedirectResponse(url=login_url)
+    access_token = create_access_token(data={"sub": user.email, "role": user.role})
+    refresh_token = create_refresh_token(data={"sub": user.email})
 
+    return {
+        "accessToken": access_token,
+        "refreshToken": refresh_token,
+        "user": user,
+    }
 
-@router.get("/callback")
-async def callback(code: str = Query(...), redirect_uri: str = Query(...)):
-    try:
-        token_response = await keycloak_service.exchange_code_for_token(code, redirect_uri)
-        return {
-            "access_token": token_response["access_token"],
-            "refresh_token": token_response["refresh_token"],
-            "token_type": "Bearer",
-            "expires_in": token_response["expires_in"]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+@router.post("/refresh", response_model=Token)
+async def refresh_access_token(request: RefreshTokenRequest):
+    """
+    Refresh the access token using a refresh token.
+    (Mock implementation)
+    """
+    # In a real app, you would verify the refresh token and find the user
+    # For now, we'll just create new tokens for the admin user as a mock
+    access_token = create_access_token(data={"sub": "admin@example.com", "role": "ADMIN"})
+    refresh_token = create_refresh_token(data={"sub": "admin@example.com"})
+    return {"accessToken": access_token, "refreshToken": refresh_token}
 
-
-@router.post("/refresh")
-async def refresh_token(refresh_token: str):
-    try:
-        token_response = await keycloak_service.refresh_token(refresh_token)
-        return {
-            "access_token": token_response["access_token"],
-            "refresh_token": token_response["refresh_token"],
-            "token_type": "Bearer",
-            "expires_in": token_response["expires_in"]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@router.post("/logout")
-async def logout(refresh_token: str):
-    try:
-        await keycloak_service.logout(refresh_token)
-        return {"message": "Successfully logged out"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+@router.post("/logout", response_model=SuccessResponse)
+async def logout():
+    """
+    User logout.
+    (Mock implementation)
+    """
+    # In a real app, you might blacklist the token or clear a server-side session
+    return {"success": True, "message": "로그아웃되었습니다."}

@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     keycloak_client_id: str
     keycloak_client_secret: str
     
+    # Redis configuration
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_db: int = 0
+
     class Config:
         env_file = ".env"
 

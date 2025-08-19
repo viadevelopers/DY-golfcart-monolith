@@ -1,15 +1,8 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
-from enum import Enum
 from uuid import UUID
-
-class CartStatus(str, Enum):
-    RUNNING = "running"
-    IDLE = "idle"
-    CHARGING = "charging"
-    FIXING = "fixing"
-    OUT_OF_SERVICE = "out_of_service"
+from app.domain.shared.cart_status import CartStatus
 
 class Position(BaseModel):
     lat: float = Field(..., description="Latitude coordinate")
