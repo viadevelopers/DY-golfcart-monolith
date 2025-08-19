@@ -32,6 +32,7 @@ jobs:
         with:
           sparse-checkout: |
             docker-compose.prod.yml
+            .env*
           sparse-checkout-cone-mode: false
 
       - name: Set deployment tag
@@ -72,8 +73,12 @@ jobs:
       - name: Prepare deployment directory
         run: |
           mkdir -p ${{ env.DEPLOY_PATH }}
+          if [ ! -f .env.prod ]; then
+            echo "::error::Required .env.prod file not found."
+            exit 1
+          fi
           cp docker-compose.prod.yml ${{ env.DEPLOY_PATH }}/
-          cp .env* ${{ env.DEPLOY_PATH }}/
+          find . -maxdepth 1 -name ".env*" -exec cp {} ${{ env.DEPLOY_PATH }}/ \;
 
   deploy:
     runs-on: self-hosted
