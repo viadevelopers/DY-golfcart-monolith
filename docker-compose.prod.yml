@@ -9,6 +9,10 @@ services:
     env_file:
       - .env.prod
     restart: unless-stopped
+    depends_on:
+      - postgres
+    networks:
+      - app-network
     logging:
       driver: "json-file"
       options:
@@ -20,3 +24,25 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  postgres:
+    image: postgres:latest
+    container_name: dy-postgres
+    env_file:
+      - .env.prod
+    environment:
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - POSTGRES_DB
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
