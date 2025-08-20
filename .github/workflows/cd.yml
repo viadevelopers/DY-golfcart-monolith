@@ -73,12 +73,14 @@ jobs:
       - name: Prepare deployment directory
         run: |
           mkdir -p ${{ env.DEPLOY_PATH }}
-          if [ ! -f .env.prod ]; then
-            echo "::error::Required .env.prod file not found."
+          cp docker-compose.prod.yml ${{ env.DEPLOY_PATH }}/
+
+          # Check for .env.prod in the deployment directory on the self-hosted runner
+          if [ ! -f "${{ env.DEPLOY_PATH }}/.env.prod" ]; then
+            echo "::error::Required .env.prod file not found in ${{ env.DEPLOY_PATH }}"
+            echo "Please ensure .env.prod is created on the self-hosted runner."
             exit 1
           fi
-          cp docker-compose.prod.yml ${{ env.DEPLOY_PATH }}/
-          find . -maxdepth 1 -name ".env*" -exec cp {} ${{ env.DEPLOY_PATH }}/ \;
 
   deploy:
     runs-on: self-hosted
