@@ -93,12 +93,17 @@ cd DY-golfcart-monolith
 2. **환경 변수 설정**
 ```bash
 cp .env.example .env
-# .env 파일을 열어 필요한 값들을 설정
+```
+`.env` 파일을 열어 애플리케이션 환경에 맞게 설정을 변경합니다. 특히 `DATABASE_URL`은 로컬에서 uvicorn을 직접 실행할 경우 `docker-compose.dev.yml`에 정의된 `postgres` 서비스의 설정과 일치해야 합니다.
+
+예시:
+```
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/golfcart_db
 ```
 
 3. **Docker 서비스 시작**
 ```bash
-docker-compose up -d
+docker-compose -f docker-compose.dev.yml up -d
 ```
 
 4. **데이터베이스 초기화**
