@@ -13,14 +13,21 @@ from app.core.config import settings
 
 
 # Create database engine
-engine = create_engine(
-    settings.DATABASE_URL,
-    pool_size=settings.DATABASE_POOL_SIZE,
-    max_overflow=settings.DATABASE_MAX_OVERFLOW,
-    echo=settings.DATABASE_ECHO,
-    # Use NullPool for development to avoid connection issues
-    poolclass=NullPool if settings.DEBUG else None,
-)
+if settings.DEBUG:
+    # Use NullPool for development - no pool parameters
+    engine = create_engine(
+        settings.DATABASE_URL,
+        echo=settings.DATABASE_ECHO,
+        poolclass=NullPool,
+    )
+else:
+    # Use connection pooling for production
+    engine = create_engine(
+        settings.DATABASE_URL,
+        pool_size=settings.DATABASE_POOL_SIZE,
+        max_overflow=settings.DATABASE_MAX_OVERFLOW,
+        echo=settings.DATABASE_ECHO,
+    )
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

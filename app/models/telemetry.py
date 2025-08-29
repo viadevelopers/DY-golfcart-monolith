@@ -67,8 +67,7 @@ class CartTelemetry(Base):
     __table_args__ = (
         Index('idx_cart_telemetry_cart_time', 'cart_id', 'timestamp'),
         Index('idx_cart_telemetry_timestamp', 'timestamp'),
-        # Partition by range on timestamp
-        {'postgresql_partition_by': 'RANGE (timestamp)'}
+        # Partitioning removed for MVP - can be added later for production
     )
     
     # Relationships

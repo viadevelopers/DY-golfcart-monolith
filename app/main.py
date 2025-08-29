@@ -1,67 +1,144 @@
-import asyncio
-from contextlib import asynccontextmanager
+"""
+DY-GOLFCART Management System API
+MVP Monolith Architecture
+"""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth
-from app.routers import golf_carts
-from app.database import engine
-from app.models import golf_cart
-from app.application.fleet.dependencies import get_event_dispatcher
+from fastapi.middleware.gzip import GZipMiddleware
+from contextlib import asynccontextmanager
+import logging
+import sys
 
-# Create database tables
-golf_cart.Base.metadata.create_all(bind=engine)
+from app.core.config import settings
+from app.core.database import init_db, check_db_connection
+
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, settings.LOG_LEVEL),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Application lifespan manager.
-
-    This context manager will run startup and shutdown logic.
+    Application lifecycle manager.
+    Handles startup and shutdown events.
     """
-    print("Starting up...")
-    # Start the event dispatcher in the background
-    dispatcher = get_event_dispatcher()
-    asyncio.create_task(dispatcher.start())
+    # Startup
+    logger.info("Starting DY-GOLFCART Management System...")
+    
+    # Skip database checks in testing environment
+    import os
+    is_testing = os.getenv("DATABASE_URL", "").endswith("golfcart_test") or "pytest" in sys.modules
+    
+    if not is_testing:
+        # Check database connection
+        if not check_db_connection():
+            logger.error("Failed to connect to database")
+            raise RuntimeError("Database connection failed")
+        
+        # Initialize database
+        try:
+            init_db()
+            logger.info("Database initialized successfully")
+        except Exception as e:
+            logger.error(f"Database initialization failed: {e}")
+            raise
+    else:
+        logger.info("Skipping database initialization (testing mode)")
+    
+    # TODO: Initialize MQTT client
+    # TODO: Initialize Redis client
+    
+    logger.info("Application started successfully")
+    
     yield
-    print("Shutting down...")
+    
+    # Shutdown
+    logger.info("Shutting down DY-GOLFCART Management System...")
+    # TODO: Cleanup MQTT connections
+    # TODO: Cleanup Redis connections
+    logger.info("Application shutdown complete")
 
 
+# Create FastAPI application
 app = FastAPI(
-    title="Golf Cart Management System",
-    description="FastAPI application with Keycloak authentication and golf cart management",
-    version="1.0.0",
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    description="Autonomous Golf Cart Management Platform - MVP API",
+    docs_url=f"{settings.API_V1_PREFIX}/docs",
+    redoc_url=f"{settings.API_V1_PREFIX}/redoc",
+    openapi_url=f"{settings.API_V1_PREFIX}/openapi.json",
     lifespan=lifespan
 )
 
+# Add middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
+    allow_methods=settings.CORS_ALLOW_METHODS,
+    allow_headers=settings.CORS_ALLOW_HEADERS,
 )
 
-app.include_router(golf_carts.router, prefix="/api/v1")
-app.include_router(auth.router)
+# Add compression middleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-
-@app.get("/")
-async def root():
-    return {
-        "message": "FastAPI Keycloak Integration",
-        "docs": "/docs",
-        "endpoints": {
-            "login": "/auth/login?redirect_uri=<your-redirect-uri>",
-            "callback": "/auth/callback?code=<code>&redirect_uri=<redirect-uri>",
-            "refresh": "/auth/refresh",
-            "logout": "/auth/logout",
-            "me": "/api/me (requires Bearer token)",
-            "admin": "/api/admin (requires Bearer token and admin role)",
-            "user-data": "/api/user-data (requires Bearer token)"
-        }
-    }
-
-
+# Health check endpoint
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "service": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "database": check_db_connection()
+    }
+
+# Root endpoint
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {
+        "message": "DY-GOLFCART Management System API",
+        "version": settings.APP_VERSION,
+        "docs": f"{settings.API_V1_PREFIX}/docs"
+    }
+
+# Include routers
+from app.api import auth, golf_courses, carts
+
+app.include_router(
+    auth.router,
+    prefix=f"{settings.API_V1_PREFIX}/auth",
+    tags=["Auth"]
+)
+
+app.include_router(
+    golf_courses.router,
+    prefix=f"{settings.API_V1_PREFIX}/golf-courses",
+    tags=["Golf Courses"]
+)
+
+app.include_router(
+    carts.router,
+    prefix=f"{settings.API_V1_PREFIX}/carts",
+    tags=["Carts"]
+)
+
+# TODO: Add more routers as they are implemented
+# app.include_router(users.router, prefix=f"{settings.API_V1_PREFIX}/users", tags=["Users"])
+# app.include_router(telemetry.router, prefix=f"{settings.API_V1_PREFIX}/telemetry", tags=["Telemetry"])
+# app.include_router(operations.router, prefix=f"{settings.API_V1_PREFIX}/operations", tags=["Operations"])
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.DEBUG
+    )
