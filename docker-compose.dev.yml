@@ -7,24 +7,39 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # sample: MQTT Configuration
-      # - MQTT_HOST=emqx
-      # - MQTT_PORT=1883
-      # - MQTT_USERNAME=admin
-      # - MQTT_PASSWORD=public
-      # - MQTT_CLIENT_ID=dy-golfcart-monolith
-      # - MQTT_KEEPALIVE=60
-      # - MQTT_QOS=1
-      # - MQTT_RETAIN=false
-      # - MQTT_ENABLED=true
+      # Database
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/golfcart_db
+      
+      # Redis
+      - REDIS_URL=redis://redis:6379/0
+      
+      # MQTT Configuration (EMQX Cloud)
+      - MQTT_BROKER_URL=emqx.dev.viasoft.ai
+      - MQTT_PORT=8883
+      - MQTT_USERNAME=admin
+      - MQTT_PASSWORD=public
+      - MQTT_CLIENT_ID=dy-golfcart-backend
+      - MQTT_USE_TLS=true
+      - MQTT_ENABLED=true
+      
+      # JWT Secret (change in production)
+      - SECRET_KEY=dy-golfcart-secret-key-change-in-production
+      
+      # Application
+      - DEBUG=true
+      - LOG_LEVEL=INFO
     depends_on:
       - postgres
+      - redis
+    volumes:
+      - ./app:/app
+      - ./uploads:/uploads  # Local file storage for MVP
     networks:
       - app-network
     restart: unless-stopped
 
   postgres:
-    image: postgres:latest
+    image: postgis/postgis:15-3.3  # PostGIS enabled PostgreSQL
     container_name: dy-postgres
     ports:
       - "5432:5432"
@@ -34,6 +49,31 @@ services:
       - POSTGRES_DB=golfcart_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: dy-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Optional: pgAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: dy-pgadmin
+    ports:
+      - "5050:80"
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@dygolfcart.com
+      - PGADMIN_DEFAULT_PASSWORD=admin
     networks:
       - app-network
     restart: unless-stopped
@@ -43,3 +83,5 @@ networks:
     driver: bridge
 
 volumes:
+  postgres_data:
+  redis_data:
