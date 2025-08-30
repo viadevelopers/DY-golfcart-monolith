@@ -124,12 +124,19 @@ async def root():
     }
 
 # Include routers
-from app.api import auth, golf_courses, carts
+from app.api import auth, golf_courses, carts, maps
 
 app.include_router(
     auth.router,
     prefix=f"{settings.API_V1_PREFIX}/auth",
     tags=["Auth"]
+)
+
+# Map endpoints (independent lifecycle as per Title 1 sequence)
+app.include_router(
+    maps.router,
+    prefix=f"{settings.API_V1_PREFIX}/maps",
+    tags=["Maps"]
 )
 
 app.include_router(

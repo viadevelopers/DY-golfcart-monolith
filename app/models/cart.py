@@ -1,7 +1,7 @@
 """
 Golf cart and cart model entities.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Float, JSON, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
@@ -34,8 +34,8 @@ class CartModel(Base):
     image_url = Column(String(500))
     manual_url = Column(String(500))
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     golf_carts = relationship("GolfCart", back_populates="cart_model")
@@ -87,8 +87,8 @@ class GolfCart(Base):
     warranty_expiry = Column(DateTime)
     notes = Column(Text)
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Unique constraint for golf_course_id + cart_number
     __table_args__ = (
@@ -112,7 +112,7 @@ class GolfCart(Base):
         """Check if cart is online based on last ping."""
         if not self.last_ping:
             return False
-        time_diff = datetime.utcnow() - self.last_ping
+        time_diff = datetime.now(timezone.utc) - self.last_ping
         return time_diff.total_seconds() < 120  # Consider online if pinged within 2 minutes
 
 
@@ -130,14 +130,14 @@ class CartRegistration(Base):
     cart_number = Column(String(20))  # Assigned cart number at this course
     
     # Registration period
-    start_date = Column(DateTime, nullable=False, default=datetime.utcnow)
+    start_date = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     end_date = Column(DateTime)  # Null means active registration
     
     # Registration details
     contract_number = Column(String(50))
     notes = Column(Text)
     
-    registered_at = Column(DateTime, default=datetime.utcnow)
+    registered_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     cart = relationship("GolfCart", back_populates="registrations")

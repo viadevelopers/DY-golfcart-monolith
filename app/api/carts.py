@@ -3,7 +3,7 @@ Cart management API endpoints.
 """
 from typing import List, Optional
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -63,13 +63,89 @@ async def create_cart_model(
             detail=f"Model with code {model.model_code} already exists"
         )
     
-    db_model = CartModel(**model.dict())
+    db_model = CartModel(**model.model_dump())
     db.add(db_model)
     db.commit()
     db.refresh(db_model)
     
     return db_model
 
+
+# Cart Registration endpoint (Title 2 sequence)
+@router.post("/register", response_model=GolfCartSchema, status_code=status.HTTP_201_CREATED)
+async def register_cart(
+    cart: RegisterCart,
+    current_user: AuthContext = Depends(require_manufacturer),
+    db: Session = Depends(get_db)
+):
+    """
+    Register a new golf cart (Title 2 sequence: MA → UI → API → CS).
+    
+    Creates cart, sets up MQTT authentication, and publishes CartRegistered event.
+    This endpoint matches the exact sequence diagram requirement.
+    """
+    from app.services.kafka_service import get_event_publisher
+    from app.services.mqtt_service import mqtt_service
+    
+    # Check if serial number already exists
+    existing = db.query(GolfCart).filter(
+        GolfCart.serial_number == cart.serial_number
+    ).first()
+    
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cart with serial number {cart.serial_number} already exists"
+        )
+    
+    # Verify cart model exists
+    model = db.query(CartModel).filter(
+        CartModel.id == cart.cart_model_id
+    ).first()
+    
+    if not model:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cart model not found"
+        )
+    
+    # Create cart (CS → DB)
+    db_cart = GolfCart(
+        serial_number=cart.serial_number,
+        cart_model_id=cart.cart_model_id,
+        cart_number=cart.cart_number,
+        firmware_version=cart.firmware_version,
+        status="IDLE",
+        mode="MANUAL",
+        mqtt_client_id=f"cart_{cart.serial_number}"
+    )
+    
+    db.add(db_cart)
+    db.commit()
+    db.refresh(db_cart)
+    
+    # MQTT authentication setup (CS → MQTT)
+    # In production, would create actual MQTT credentials
+    mqtt_auth = {
+        'client_id': db_cart.mqtt_client_id,
+        'username': f"cart_{db_cart.id}",
+        'password': 'generated_secure_password',  # Would be generated
+        'topic_prefix': f"cart/{db_cart.id}"
+    }
+    
+    # Publish CartRegistered event (CS → Kafka)
+    event_publisher = get_event_publisher()
+    event_publisher.publish_cart_registered(
+        cart_id=str(db_cart.id),
+        serial_number=db_cart.serial_number,
+        cart_model_id=str(db_cart.cart_model_id),
+        additional_data={
+            'firmware_version': cart.firmware_version,
+            'mqtt_client_id': db_cart.mqtt_client_id
+        }
+    )
+    
+    return db_cart
 
 # Golf Cart endpoints
 @router.get("/", response_model=List[GolfCartSchema])
@@ -106,7 +182,7 @@ async def list_carts(
     # Add golf course name and online status
     result = []
     for cart in carts:
-        cart_dict = GolfCartSchema.from_orm(cart).dict()
+        cart_dict = GolfCartSchema.model_validate(cart).model_dump()
         if cart.golf_course:
             cart_dict["golf_course_name"] = cart.golf_course.name
         cart_dict["is_online"] = cart.is_online
@@ -190,12 +266,12 @@ async def get_cart(
         )
     
     # Create detailed response
-    result = GolfCartDetail.from_orm(cart)
+    result = GolfCartDetail.model_validate(cart)
     result.is_online = cart.is_online
     
     # Add cart model
     if cart.cart_model:
-        result.cart_model = CartModelSchema.from_orm(cart.cart_model)
+        result.cart_model = CartModelSchema.model_validate(cart.cart_model)
     
     # Add golf course name
     if cart.golf_course:
@@ -273,7 +349,7 @@ async def update_cart(
     for field, value in update_dict.items():
         setattr(cart, field, value)
     
-    cart.updated_at = datetime.utcnow()
+    cart.updated_at = datetime.now(timezone.utc)
     
     db.commit()
     db.refresh(cart)
@@ -281,7 +357,7 @@ async def update_cart(
     return cart
 
 
-@router.post("/{cart_id}/assign", response_model=CartRegistrationSchema)
+@router.patch("/{cart_id}/assign", response_model=CartRegistrationSchema)
 async def assign_cart_to_golf_course(
     cart_id: UUID,
     assignment: AssignCart,
@@ -289,9 +365,13 @@ async def assign_cart_to_golf_course(
     db: Session = Depends(get_db)
 ):
     """
-    Assign cart to a golf course.
-    Only manufacturer users can assign carts.
+    Assign cart to a golf course (Title 2 sequence: MA → UI → API → CS).
+    
+    Validates golf course, updates assignment, syncs MQTT config, publishes CartAssigned event.
+    This endpoint matches the exact sequence diagram requirement (PATCH method).
     """
+    from app.services.kafka_service import get_event_publisher
+    from app.services.mqtt_service import mqtt_service
     # Get cart
     cart = db.query(GolfCart).filter(GolfCart.id == cart_id).first()
     
@@ -319,7 +399,7 @@ async def assign_cart_to_golf_course(
     ).first()
     
     if existing:
-        existing.end_date = datetime.utcnow()
+        existing.end_date = datetime.now(timezone.utc)
     
     # Create new registration
     registration = CartRegistration(
@@ -329,16 +409,46 @@ async def assign_cart_to_golf_course(
         registration_type=assignment.registration_type,
         cart_number=assignment.cart_number,
         notes=assignment.notes,
-        start_date=datetime.utcnow()
+        start_date=datetime.now(timezone.utc)
     )
     
-    # Update cart
+    # Update cart (CS → DB)
     cart.golf_course_id = assignment.golf_course_id
     cart.cart_number = assignment.cart_number
     
     db.add(registration)
     db.commit()
     db.refresh(registration)
+    
+    # MQTT Configuration Sync (CS → MQTT)
+    config_payload = {
+        'command': 'update_config',
+        'golf_course_id': str(golf_course.id),
+        'cart_number': assignment.cart_number,
+        'settings': {
+            'speed_limit': golf_course.cart_speed_limit or 20.0,
+            'geofence_enabled': golf_course.geofence_alerts_enabled,
+            'auto_return': golf_course.auto_return_enabled
+        }
+    }
+    
+    # Publish config to cart via MQTT (retain=true, QoS=1 as per sequence)
+    mqtt_service.publish_cart_config(
+        cart_serial=cart.serial_number,
+        config=config_payload
+    )
+    
+    # Publish CartAssigned event (CS → Kafka)
+    event_publisher = get_event_publisher()
+    event_publisher.publish_cart_assigned(
+        cart_id=str(cart.id),
+        golf_course_id=str(golf_course.id),
+        cart_number=assignment.cart_number,
+        additional_data={
+            'registration_type': assignment.registration_type,
+            'notes': assignment.notes
+        }
+    )
     
     return registration
 

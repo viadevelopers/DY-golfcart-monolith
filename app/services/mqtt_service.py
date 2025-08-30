@@ -8,7 +8,7 @@ Handles cart telemetry, status updates, configuration synchronization, and comma
 import json
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Callable, List
 from contextlib import asynccontextmanager
 
@@ -272,7 +272,7 @@ class MQTTClient:
         # Add timestamp to config
         config_with_timestamp = {
             **config,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
         return self.publish(topic, config_with_timestamp)
@@ -296,7 +296,7 @@ class MQTTClient:
         # Add timestamp to command
         command_with_timestamp = {
             **command,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
         return self.publish(topic, command_with_timestamp)
@@ -320,7 +320,7 @@ class MQTTClient:
         # Add timestamp to event
         event_with_timestamp = {
             **event_data,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
         return self.publish(topic, event_with_timestamp)

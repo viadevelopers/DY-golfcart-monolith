@@ -222,15 +222,16 @@ paths:
                 $ref: '#/components/schemas/GolfCourse'
 
   # ===================================
-  # Maps & Routes Management
+  # Maps Management (Independent Lifecycle)
   # ===================================
-  /golf-courses/{golfCourseId}/maps:
+  /maps/upload:
     post:
       tags:
         - Maps
       summary: 지도 업로드 (제조사 전용)
-      parameters:
-        - $ref: '#/components/parameters/GolfCourseId'
+      description: |
+        골프장과 독립적으로 지도 데이터를 업로드하고 처리합니다.
+        업로드된 지도는 S3에 저장되고 타일 생성 후 map_features 테이블에 저장됩니다.
       requestBody:
         required: true
         content:
@@ -239,39 +240,142 @@ paths:
               type: object
               required:
                 - file
+                - name
                 - version
               properties:
                 file:
                   type: string
                   format: binary
                   description: 지도 파일 (GeoJSON, KML, 또는 이미지)
+                name:
+                  type: string
+                  description: 지도 이름
+                  example: "Pine Hills Main Course"
                 version:
                   type: string
                   example: "1.0.0"
-                metadata:
-                  type: object
-                  properties:
-                    center_lat:
-                      type: number
-                    center_lng:
-                      type: number
-                    zoom_levels:
-                      type: array
-                      items:
-                        type: integer
+                center_lat:
+                  type: number
+                  example: 37.7749
+                center_lng:
+                  type: number
+                  example: -122.4194
+                zoom_levels:
+                  type: array
+                  items:
+                    type: integer
+                  example: [10, 12, 14, 16, 18]
       responses:
-        201:
+        200:
           description: 지도 업로드 성공
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GolfCourseMap'
+                type: object
+                properties:
+                  map_id:
+                    type: string
+                    format: uuid
+                    description: 생성된 지도 ID
+                  storage_url:
+                    type: string
+                    description: S3 저장 URL
+                  tiles:
+                    type: array
+                    items:
+                      type: string
+                    description: 생성된 타일 URLs
+                  bounds:
+                    type: array
+                    items:
+                      type: array
+                      items:
+                        type: number
+                    description: 지도 경계 좌표
+        400:
+          description: 잘못된 요청
+        500:
+          description: 서버 오류
 
+  /maps/routes:
+    post:
+      tags:
+        - Maps
+      summary: 코스 경로 설정
+      description: |
+        업로드된 지도를 기반으로 골프코스 경로를 설정합니다.
+        PostGIS LINESTRING 형식으로 저장됩니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - route_type
+                - path
+                - map_id
+              properties:
+                name:
+                  type: string
+                  example: "Full Course Route"
+                route_type:
+                  type: string
+                  enum: [FULL_COURSE, HOLE_TO_HOLE, RETURN_TO_BASE, CHARGING_STATION, CUSTOM]
+                  example: "FULL_COURSE"
+                path:
+                  type: array
+                  items:
+                    type: array
+                    items:
+                      type: number
+                    minItems: 2
+                    maxItems: 2
+                  description: "경로 좌표 배열 [[lng, lat], [lng, lat], ...]"
+                  example: [[-122.4194, 37.7749], [-122.4190, 37.7751], [-122.4185, 37.7753]]
+                distance_meters:
+                  type: number
+                  example: 5500
+                estimated_time_seconds:
+                  type: integer
+                  example: 14400
+                map_id:
+                  type: string
+                  format: uuid
+                  description: 참조할 지도 ID
+      responses:
+        200:
+          description: 경로 설정 완료
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  route_id:
+                    type: string
+                    format: uuid
+                  name:
+                    type: string
+                  route_type:
+                    type: string
+                  distance_meters:
+                    type: number
+                  estimated_time_seconds:
+                    type: integer
+        400:
+          description: 잘못된 요청
+        404:
+          description: 지도를 찾을 수 없음
+
+  # ===================================
+  # Golf Course Routes (Golf Course Context)
+  # ===================================
   /golf-courses/{golfCourseId}/routes:
     get:
       tags:
-        - Maps
-      summary: 경로 목록 조회
+        - Golf Courses
+      summary: 골프장 경로 목록 조회
       parameters:
         - $ref: '#/components/parameters/GolfCourseId'
         - name: route_type
@@ -291,26 +395,6 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Route'
-
-    post:
-      tags:
-        - Maps
-      summary: 경로 생성
-      parameters:
-        - $ref: '#/components/parameters/GolfCourseId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateRoute'
-      responses:
-        201:
-          description: 경로 생성 성공
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Route'
 
   /golf-courses/{golfCourseId}/geofences:
     get:
@@ -355,6 +439,76 @@ paths:
   # ===================================
   # Cart Management
   # ===================================
+  /carts/register:
+    post:
+      tags:
+        - Carts
+      summary: 골프카트 등록 (제조사 전용)
+      description: |
+        제조사에서 새로운 골프카트를 시스템에 등록합니다.
+        등록 시 MQTT 인증 정보가 자동 생성되고 CartRegistered 이벤트가 발행됩니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - serial_number
+                - cart_model_id
+                - firmware_version
+              properties:
+                serial_number:
+                  type: string
+                  description: 카트 시리얼 번호 (고유)
+                  example: "DY-2024-CART-001"
+                cart_model_id:
+                  type: string
+                  format: uuid
+                  description: 카트 모델 ID
+                firmware_version:
+                  type: string
+                  example: "3.2.1"
+                hardware_version:
+                  type: string
+                  example: "2.0"
+                manufacturing_date:
+                  type: string
+                  format: date
+                  example: "2024-01-15"
+                warranty_expires:
+                  type: string
+                  format: date
+                  example: "2027-01-15"
+      responses:
+        201:
+          description: 카트 등록 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                    description: 생성된 카트 ID (UUID)
+                  serial_number:
+                    type: string
+                  status:
+                    type: string
+                    example: "IDLE"
+                  mqtt_client_id:
+                    type: string
+                    description: MQTT 클라이언트 ID
+                    example: "cart_DY-2024-CART-001"
+                  created_at:
+                    type: string
+                    format: date-time
+        400:
+          description: 잘못된 요청 (중복 시리얼 번호 등)
+        404:
+          description: 카트 모델을 찾을 수 없음
+
   /carts:
     get:
       tags:
@@ -387,24 +541,6 @@ paths:
                       $ref: '#/components/schemas/GolfCart'
                   pagination:
                     $ref: '#/components/schemas/Pagination'
-
-    post:
-      tags:
-        - Carts
-      summary: 카트 등록 (제조사 전용)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/RegisterCart'
-      responses:
-        201:
-          description: 카트 등록 성공
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GolfCart'
 
   /carts/{cartId}:
     get:
@@ -442,10 +578,13 @@ paths:
                 $ref: '#/components/schemas/GolfCart'
 
   /carts/{cartId}/assign:
-    post:
+    patch:
       tags:
         - Carts
       summary: 카트를 골프장에 할당
+      description: |
+        카트를 특정 골프장에 할당합니다.
+        할당 시 골프장 존재 여부를 확인하고 MQTT 설정을 동기화하며 CartAssigned 이벤트를 발행합니다.
       parameters:
         - $ref: '#/components/parameters/CartId'
       requestBody:
