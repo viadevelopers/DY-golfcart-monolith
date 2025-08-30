@@ -252,7 +252,12 @@ async def update_cart(
     
     # Check access
     if current_user.is_golf_course:
-        if cart.golf_course_id != current_user.golf_course_id:
+        # Fix UUID vs string comparison by converting both to UUID
+        from uuid import UUID
+        cart_golf_course_id = cart.golf_course_id
+        user_golf_course_id = UUID(current_user.golf_course_id) if isinstance(current_user.golf_course_id, str) else current_user.golf_course_id
+        
+        if cart_golf_course_id != user_golf_course_id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied"

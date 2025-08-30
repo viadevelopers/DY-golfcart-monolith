@@ -204,6 +204,21 @@ async def create_hole(
     Create a hole for a golf course.
     Only manufacturer users can create holes.
     """
+    # Get golf course to validate hole count
+    golf_course = db.query(GolfCourse).filter(GolfCourse.id == golf_course_id).first()
+    if not golf_course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Golf course not found"
+        )
+    
+    # Validate hole number is within valid range
+    if hole.hole_number < 1 or hole.hole_number > golf_course.hole_count:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Hole number must be between 1 and {golf_course.hole_count}"
+        )
+    
     # Check if hole number already exists
     existing = db.query(Hole).filter(
         Hole.golf_course_id == golf_course_id,
@@ -288,6 +303,26 @@ async def create_route(
     Create a route for a golf course.
     Only manufacturer users can create routes.
     """
+    # Validate route path coordinates
+    if route.path:
+        for coord in route.path:
+            if len(coord) != 2:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Each coordinate must have exactly 2 values [lng, lat]"
+                )
+            lng, lat = coord
+            if not (-180 <= lng <= 180):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Longitude {lng} must be between -180 and 180"
+                )
+            if not (-90 <= lat <= 90):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Latitude {lat} must be between -90 and 90"
+                )
+    
     # Create route
     db_route = Route(
         golf_course_id=golf_course_id,
@@ -353,6 +388,13 @@ async def create_geofence(
     Create a geofence for a golf course.
     Only manufacturer users can create geofences.
     """
+    # Validate speed limit
+    if geofence.speed_limit is not None and geofence.speed_limit > 50.0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Speed limit {geofence.speed_limit} km/h exceeds maximum allowed limit of 50.0 km/h"
+        )
+    
     # Create geofence
     db_geofence = Geofence(
         golf_course_id=golf_course_id,
@@ -367,16 +409,69 @@ async def create_geofence(
         schedule=geofence.schedule
     )
     
-    # Set geometry
+    # Set geometry with validation
     if geofence.geometry:
-        # Ensure the polygon is closed
-        if geofence.geometry[0][0] != geofence.geometry[0][-1]:
-            geofence.geometry[0].append(geofence.geometry[0][0])
-        
-        db_geofence.geometry = from_shape(
-            Polygon(geofence.geometry[0]),
-            srid=4326
-        )
+        try:
+            # Extract the coordinate ring from nested structure
+            coordinates = geofence.geometry[0][0]  # [[[lng, lat], [lng, lat], ...]]
+            
+            # Validate coordinates
+            if len(coordinates) < 3:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Polygon must have at least 3 coordinates"
+                )
+            
+            # Validate coordinate values
+            for coord in coordinates:
+                if len(coord) != 2:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail="Each coordinate must have exactly 2 values [lng, lat]"
+                    )
+                lng, lat = coord
+                if not (-180 <= lng <= 180):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"Longitude {lng} must be between -180 and 180"
+                    )
+                if not (-90 <= lat <= 90):
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"Latitude {lat} must be between -90 and 90"
+                    )
+            
+            # Ensure the polygon is closed
+            if coordinates[0] != coordinates[-1]:
+                coordinates = coordinates + [coordinates[0]]
+            
+            # Create and validate the polygon
+            from shapely.geometry import Polygon
+            polygon = Polygon(coordinates)
+            
+            if not polygon.is_valid:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid polygon geometry: {polygon.is_valid_reason if hasattr(polygon, 'is_valid_reason') else 'Invalid geometry'}"
+                )
+            
+            # Check if polygon has meaningful area
+            if polygon.area < 1e-12:  # Very small threshold for coordinate precision
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Polygon area is too small, coordinates may be invalid"
+                )
+            
+            # Set the geometry using GeoAlchemy2
+            db_geofence.geometry = from_shape(polygon, srid=4326)
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Failed to process geometry: {str(e)}"
+            )
     
     db.add(db_geofence)
     db.commit()

@@ -1,4 +1,4 @@
-1.  골프장 초기 설정 시퀀스
+title 1. 골프장 초기 설정 시퀀스
 
 ```mermaid
 sequenceDiagram
@@ -46,7 +46,7 @@ sequenceDiagram
         UI-->>MA: 골프장 생성 완료
 ```
 
-2.  골프카트 등록 및 할당 시퀀스
+title 2. 골프카트 등록 및 할당 시퀀스
 
 ```mermaid
 sequenceDiagram
@@ -109,7 +109,7 @@ sequenceDiagram
         UI-->>MA: 할당 완료 표시
 ```
 
-3.  지도/코스 데이터 동기화 시퀀스
+title 3. 지도/코스 데이터 동기화 시퀀스
 
 ```mermaid
 sequenceDiagram
@@ -168,7 +168,7 @@ sequenceDiagram
         DB-->>CS: 완료
 ```
 
-4.  제조사 대시보드 모니터링 시퀀스
+title 4. 제조사 대시보드 모니터링 시퀀스
 
 ```mermaid
 sequenceDiagram

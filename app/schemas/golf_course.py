@@ -135,7 +135,7 @@ class GeofenceBase(BaseModel):
 
 class CreateGeofence(GeofenceBase):
     """Create geofence request."""
-    geometry: List[List[List[float]]]  # [[[lng, lat], [lng, lat], ...]]
+    geometry: List[List[List[List[float]]]]  # [[[[lng, lat], [lng, lat], ...]]]
     schedule: Optional[List[Dict[str, Any]]] = None
 
 

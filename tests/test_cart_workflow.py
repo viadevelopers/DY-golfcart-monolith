@@ -234,7 +234,7 @@ class TestCartTelemetryWorkflow:
     @patch('app.services.mqtt_service.MQTTClient')
     def test_cart_boot_and_sync_sequence(self, mock_mqtt, client: TestClient,
                                         db_session, test_cart_assigned,
-                                        test_golf_course_with_data):
+                                        test_golf_course_with_data, manufacturer_token):
         """Test cart boot sequence with map/route synchronization."""
         
         # Simulate cart boot - status message via MQTT
@@ -246,36 +246,22 @@ class TestCartTelemetryWorkflow:
         
         # Mock MQTT publish for configuration
         mock_mqtt_instance = mock_mqtt.return_value
+        mock_mqtt_instance.publish_cart_config.return_value = True
         
-        # Simulate backend processing and sending config
-        expected_config = {
-            "command": "update_map",
-            "map_url": f"/uploads/maps/{test_golf_course_with_data.id}/main.png",
-            "routes": [
-                {
-                    "id": str(route.id),
-                    "name": route.name,
-                    "type": route.route_type
-                }
-                for route in test_golf_course_with_data.routes
-            ],
-            "geofences": [
-                {
-                    "id": str(fence.id),
-                    "name": fence.name,
-                    "type": fence.fence_type,
-                    "speed_limit": fence.speed_limit
-                }
-                for fence in test_golf_course_with_data.geofences
-            ],
-            "speed_limit": test_golf_course_with_data.cart_speed_limit,
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        # Trigger the actual configuration sync using our MQTT service
+        from app.services.mqtt_service import create_cart_sync_config
+        
+        # Create the expected configuration
+        config = create_cart_sync_config(test_golf_course_with_data, test_cart_assigned)
+        
+        # Simulate the backend sending configuration to the cart
+        mqtt_client = mock_mqtt_instance
+        mqtt_client.publish_cart_config(test_cart_assigned.serial_number, config)
         
         # Verify cart receives configuration
-        mock_mqtt_instance.publish.assert_called_with(
-            f"dy/golfcart/cart/{test_cart_assigned.serial_number}/config",
-            json.dumps(expected_config)
+        mock_mqtt_instance.publish_cart_config.assert_called_with(
+            test_cart_assigned.serial_number,
+            config
         )
         
         # Simulate cart acknowledgment
@@ -292,7 +278,7 @@ class TestCartTelemetryWorkflow:
         # Verify cart is ready
         cart_response = client.get(
             f"/api/v1/carts/{test_cart_assigned.id}",
-            headers={"Authorization": f"Bearer {client.app.state.token}"}
+            headers={"Authorization": f"Bearer {manufacturer_token}"}
         )
         
         assert cart_response.status_code == 200

@@ -50,7 +50,15 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Skipping database initialization (testing mode)")
     
-    # TODO: Initialize MQTT client
+    # Initialize MQTT service
+    try:
+        from app.services.mqtt_service import initialize_mqtt_service
+        await initialize_mqtt_service()
+        logger.info("MQTT service initialized successfully")
+    except Exception as e:
+        logger.warning(f"MQTT service initialization failed: {e}")
+        # Don't fail startup if MQTT is unavailable
+    
     # TODO: Initialize Redis client
     
     logger.info("Application started successfully")
@@ -59,7 +67,14 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down DY-GOLFCART Management System...")
-    # TODO: Cleanup MQTT connections
+    # Cleanup MQTT connections
+    try:
+        from app.services.mqtt_service import shutdown_mqtt_service
+        await shutdown_mqtt_service()
+        logger.info("MQTT service shutdown complete")
+    except Exception as e:
+        logger.warning(f"MQTT service shutdown error: {e}")
+    
     # TODO: Cleanup Redis connections
     logger.info("Application shutdown complete")
 
