@@ -33,7 +33,7 @@ services:
       - /workspace/.venv
       - /workspace/app/__pycache__
     networks:
-      - app-network
+      - dy-golfcart-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -72,7 +72,7 @@ services:
       - ./init-db.sh:/docker-entrypoint-initdb.d/01-init-db.sh:ro
       - ./scripts/dev-data.sql:/docker-entrypoint-initdb.d/02-dev-data.sql:ro
     networks:
-      - app-network
+      - dy-golfcart-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d golfcart_db"]
@@ -123,7 +123,7 @@ services:
       - postgres_test_data:/var/lib/postgresql/data
       - ./init-db.sh:/docker-entrypoint-initdb.d/01-init-db.sh:ro
     networks:
-      - app-network
+      - dy-golfcart-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d golfcart_test"]
@@ -161,7 +161,7 @@ services:
       - redis_data:/data
       - ./config/redis-dev.conf:/usr/local/etc/redis/redis.conf:ro
     networks:
-      - app-network
+      - dy-golfcart-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
@@ -192,7 +192,7 @@ services:
       postgres-test:
         condition: service_healthy
     networks:
-      - app-network
+      - dy-golfcart-network
     restart: unless-stopped
     healthcheck:
       test:
@@ -223,7 +223,7 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - app-network
+      - dy-golfcart-network
     restart: unless-stopped
 
   # Development Tools Container
@@ -235,7 +235,7 @@ services:
       - .:/workspace:cached
       - devtools_cache:/root/.cache
     networks:
-      - app-network
+      - dy-golfcart-network
     profiles:
       - tools
     command: >
@@ -248,11 +248,8 @@ services:
     restart: unless-stopped
 
 networks:
-  app-network:
+  dy-golfcart-network:
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
     labels:
       - "com.dygolfcart.environment=development"
       - "com.dygolfcart.project=golfcart-monolith"
