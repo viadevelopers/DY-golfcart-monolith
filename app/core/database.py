@@ -2,7 +2,7 @@
 Database configuration and session management.
 PostgreSQL with PostGIS extension for geospatial data.
 """
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import NullPool
@@ -67,26 +67,66 @@ def get_db_context() -> Generator[Session, None, None]:
 
 def init_db() -> None:
     """
-    Initialize database with required extensions.
-    Creates tables and PostGIS extension.
+    Initialize database with required extensions and tables.
+    Creates tables and PostGIS extension on application startup.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     with engine.begin() as conn:
         # Enable PostGIS extension
-        conn.execute("CREATE EXTENSION IF NOT EXISTS postgis")
-        conn.execute("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\"")
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\""))
         
         # Create schema if needed
-        conn.execute("CREATE SCHEMA IF NOT EXISTS golfcart")
+        conn.execute(text("CREATE SCHEMA IF NOT EXISTS golfcart"))
+        
+        logger.info("Database extensions initialized")
+    
+    # Import all models to ensure they are registered with SQLAlchemy
+    # This is crucial for table creation
+    from app.models import (
+        # Users
+        ManufacturerUser, GolfCourseUser,
+        # Maps (Independent lifecycle - Title 1)
+        Map,
+        # Golf Course
+        GolfCourse, GolfCourseMap, Hole, Route, Geofence,
+        # Cart
+        CartModel, GolfCart, CartRegistration,
+        # Operations
+        CartAssignment, MaintenanceLog,
+        # Telemetry
+        CartTelemetry, CartEvent
+    )
     
     # Create all tables
     Base.metadata.create_all(bind=engine)
+    
+    # Log created tables
+    logger.info(f"Created/verified {len(Base.metadata.sorted_tables)} tables")
+    for table in Base.metadata.sorted_tables:
+        logger.debug(f"  - Table: {table.name}")
+    
+    # Verify Map table specifically
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = 'maps'
+            );
+        """))
+        
+        if result.scalar():
+            logger.info("✅ Map table verified and ready for use")
 
 
 def check_db_connection() -> bool:
     """Check if database is accessible."""
     try:
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
         return True
     except Exception:
         return False

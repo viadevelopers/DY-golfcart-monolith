@@ -3,7 +3,7 @@ Cart management schemas.
 """
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 
@@ -108,24 +108,5 @@ class CartRegistration(BaseModel):
         from_attributes = True
 
 
-class CartTelemetryData(BaseModel):
-    """Cart telemetry data."""
-    cart_id: UUID
-    timestamp: datetime
-    position: Dict[str, float]  # {"lat": 0.0, "lng": 0.0}
-    heading: Optional[float] = None
-    speed: Optional[float] = None
-    battery_level: Optional[int] = None
-    
-    class Config:
-        from_attributes = True
-
-
-class CartStatus(BaseModel):
-    """Cart status update."""
-    cart_id: UUID
-    status: str
-    mode: Optional[str] = None
-    battery_level: Optional[int] = None
-    position: Optional[Dict[str, float]] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+# Note: CartTelemetryData and CartStatus schemas have been moved to app.schemas.telemetry
+# for better organization and to avoid duplication with comprehensive telemetry schemas

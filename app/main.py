@@ -30,25 +30,17 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting DY-GOLFCART Management System...")
     
-    # Skip database checks in testing environment
-    import os
-    is_testing = os.getenv("DATABASE_URL", "").endswith("golfcart_test") or "pytest" in sys.modules
-    
-    if not is_testing:
-        # Check database connection
-        if not check_db_connection():
-            logger.error("Failed to connect to database")
-            raise RuntimeError("Database connection failed")
+    if not check_db_connection():
+        logger.error("Failed to connect to database")
+        raise RuntimeError("Database connection failed")
         
-        # Initialize database
-        try:
-            init_db()
-            logger.info("Database initialized successfully")
-        except Exception as e:
-            logger.error(f"Database initialization failed: {e}")
-            raise
-    else:
-        logger.info("Skipping database initialization (testing mode)")
+    # Initialize database
+    try:
+        init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
+        raise
     
     # Initialize MQTT service
     try:
@@ -93,10 +85,10 @@ app = FastAPI(
 # Add middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=settings.CORS_ALLOW_CREDENTIALS,
-    allow_methods=settings.CORS_ALLOW_METHODS,
-    allow_headers=settings.CORS_ALLOW_HEADERS,
+    allow_methods=settings.ALLOWED_METHODS,
+    allow_headers=settings.ALLOWED_HEADERS,
 )
 
 # Add compression middleware
@@ -124,7 +116,7 @@ async def root():
     }
 
 # Include routers
-from app.api import auth, golf_courses, carts, maps
+from app.api import auth, golf_courses, carts, maps, telemetry, websocket
 
 app.include_router(
     auth.router,
@@ -151,9 +143,20 @@ app.include_router(
     tags=["Carts"]
 )
 
+app.include_router(
+    telemetry.router,
+    prefix=f"{settings.API_V1_PREFIX}/telemetry",
+    tags=["Telemetry"]
+)
+
+app.include_router(
+    websocket.router,
+    prefix=f"{settings.API_V1_PREFIX}/ws",
+    tags=["WebSocket"]
+)
+
 # TODO: Add more routers as they are implemented
 # app.include_router(users.router, prefix=f"{settings.API_V1_PREFIX}/users", tags=["Users"])
-# app.include_router(telemetry.router, prefix=f"{settings.API_V1_PREFIX}/telemetry", tags=["Telemetry"])
 # app.include_router(operations.router, prefix=f"{settings.API_V1_PREFIX}/operations", tags=["Operations"])
 
 if __name__ == "__main__":

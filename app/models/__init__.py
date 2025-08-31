@@ -4,6 +4,7 @@ All models use SQLAlchemy with PostGIS support for geospatial data.
 """
 from app.models.user import ManufacturerUser, GolfCourseUser
 from app.models.golf_course import GolfCourse, GolfCourseMap, Hole, Route, Geofence
+from app.models.map import Map
 from app.models.cart import CartModel, GolfCart, CartRegistration
 from app.models.operations import CartAssignment, MaintenanceLog
 from app.models.telemetry import CartTelemetry, CartEvent
@@ -12,6 +13,8 @@ __all__ = [
     # Users
     "ManufacturerUser",
     "GolfCourseUser",
+    # Maps (Independent lifecycle - Title 1)
+    "Map",
     # Golf Course
     "GolfCourse",
     "GolfCourseMap",

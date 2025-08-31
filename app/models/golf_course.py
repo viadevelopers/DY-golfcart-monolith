@@ -2,7 +2,7 @@
 Golf course related models with geospatial support.
 Uses PostGIS for map data, routes, and geofences.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Float, JSON, Text
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
@@ -39,8 +39,8 @@ class GolfCourse(Base):
     metadata_json = Column(JSON)  # Additional flexible data
     
     created_by = Column(UUID(as_uuid=True), ForeignKey("manufacturer_users.id"))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     created_by_user = relationship("ManufacturerUser", back_populates="created_golf_courses")
@@ -83,7 +83,7 @@ class GolfCourseMap(Base):
     metadata_json = Column(JSON)  # Additional map metadata
     
     uploaded_by = Column(UUID(as_uuid=True), ForeignKey("manufacturer_users.id"))
-    uploaded_at = Column(DateTime, default=datetime.utcnow)
+    uploaded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Relationships
     golf_course = relationship("GolfCourse", back_populates="maps")
@@ -117,8 +117,8 @@ class Hole(Base):
     # Hazards and features
     hazards = Column(JSON)  # Array of hazard polygons
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     golf_course = relationship("GolfCourse", back_populates="holes")
@@ -137,6 +137,9 @@ class Route(Base):
     name = Column(String(100), nullable=False)
     route_type = Column(String(30), nullable=False)  # HOLE_TO_HOLE, RETURN_TO_BASE, CHARGING, CUSTOM
     
+    # Independent map reference (Title 1 sequence support)
+    map_id = Column(UUID(as_uuid=True), ForeignKey("maps.id"), nullable=True)
+    
     # Route geometry (PostGIS)
     path = Column(Geometry("LINESTRING", srid=4326), nullable=False)
     distance_meters = Column(Float)
@@ -152,8 +155,8 @@ class Route(Base):
     is_preferred = Column(Boolean, default=False)  # Preferred route for navigation
     
     created_by = Column(UUID(as_uuid=True), ForeignKey("manufacturer_users.id"))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     golf_course = relationship("GolfCourse", back_populates="routes")
@@ -188,8 +191,8 @@ class Geofence(Base):
     is_active = Column(Boolean, default=True)
     severity = Column(String(20), default="WARNING")  # INFO, WARNING, CRITICAL
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     golf_course = relationship("GolfCourse", back_populates="geofences")

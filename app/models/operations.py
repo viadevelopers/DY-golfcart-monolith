@@ -1,7 +1,7 @@
 """
 Operational models for cart assignments and maintenance.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Float, JSON, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -55,8 +55,8 @@ class CartAssignment(Base):
     notes = Column(Text)
     
     created_by = Column(UUID(as_uuid=True), ForeignKey("golf_course_users.id"))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     golf_course = relationship("GolfCourse", back_populates="cart_assignments")
@@ -126,8 +126,8 @@ class MaintenanceLog(Base):
     attachments = Column(JSON)  # Array of file URLs
     
     created_by = Column(UUID(as_uuid=True), ForeignKey("golf_course_users.id"))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     cart = relationship("GolfCart", back_populates="maintenance_logs")
@@ -140,5 +140,5 @@ class MaintenanceLog(Base):
     def is_overdue(self):
         """Check if maintenance is overdue."""
         if self.status == "SCHEDULED" and self.scheduled_date:
-            return datetime.utcnow() > self.scheduled_date
+            return datetime.now(timezone.utc) > self.scheduled_date
         return False

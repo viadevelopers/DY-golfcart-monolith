@@ -2,6 +2,7 @@
 Authentication API endpoints.
 """
 from datetime import datetime, timedelta
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -33,7 +34,7 @@ def authenticate_manufacturer(
     db: Session,
     email: str,
     password: str
-) -> ManufacturerUser:
+) -> Optional[ManufacturerUser]:
     """Authenticate manufacturer user."""
     user = db.query(ManufacturerUser).filter(
         ManufacturerUser.email == email
@@ -52,7 +53,7 @@ def authenticate_golf_course(
     db: Session,
     email: str,
     password: str
-) -> GolfCourseUser:
+) -> Optional[GolfCourseUser]:
     """Authenticate golf course user."""
     user = db.query(GolfCourseUser).filter(
         GolfCourseUser.email == email
@@ -236,7 +237,7 @@ async def refresh_token(
     
     if user_type == "golf_course":
         token_data["golf_course_id"] = str(user.golf_course_id)
-        token_data["is_admin"] = user.is_admin
+        token_data["is_admin"] = str(user.is_admin)
     elif user_type == "manufacturer":
         token_data["is_superuser"] = user.is_superuser
     

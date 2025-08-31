@@ -10,17 +10,20 @@ import logging
 import os
 from typing import Dict, Any, List, Optional, Tuple
 from uuid import uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BytesIO
 from PIL import Image
 
 from sqlalchemy.orm import Session
 from geoalchemy2.shape import from_shape
+from geoalchemy2.elements import WKTElement
 from shapely.geometry import Point, LineString, Polygon
 
-from app.core.database import get_db
+from app.core.database import get_db, get_db_context
 from app.services.s3_service import S3Service
 from app.models.golf_course import GolfCourseMap, Route
+from app.models.map import Map
+from app.repositories.map_repository import MapRepository
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +45,9 @@ class MapService:
         version: str,
         center_lat: Optional[float] = None,
         center_lng: Optional[float] = None,
-        zoom_levels: Optional[List[int]] = None
+        zoom_levels: Optional[List[int]] = None,
+        uploaded_by_id: Optional[str] = None,
+        golf_course_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Process uploaded map file according to Title 1 sequence.
@@ -94,24 +99,51 @@ class MapService:
                 center_lng
             )
             
-            # Step 4: Store in map_features table (MS → DB)
+            # Step 4: Store in maps table (MS → DB)
             map_features = self._extract_map_features(file_data, filename)
             
-            # Save to database (simulated - in real implementation would use map_features table)
-            map_record = {
-                'id': map_id,
-                'name': name,
-                'version': version,
-                'storage_url': storage_url,
-                'tiles': tiles,
-                'bounds': bounds,
-                'features': map_features,
-                'center_point': [center_lng, center_lat] if center_lat and center_lng else None,
-                'zoom_levels': zoom_levels or [10, 12, 14, 16, 18],
-                'created_at': datetime.utcnow().isoformat()
-            }
-            
-            logger.info(f"Map processing completed for {map_id}")
+            # Save to database
+            with get_db_context() as db:
+                # Create geometry objects for PostGIS
+                center_geom = None
+                if center_lat and center_lng:
+                    center_geom = WKTElement(f'POINT({center_lng} {center_lat})', srid=4326)
+                
+                bounds_geom = None
+                if bounds and len(bounds) == 2:
+                    # Create polygon from bounds [[min_lng, min_lat], [max_lng, max_lat]]
+                    min_lng, min_lat = bounds[0]
+                    max_lng, max_lat = bounds[1]
+                    bounds_geom = WKTElement(
+                        f'POLYGON(({min_lng} {min_lat}, {max_lng} {min_lat}, '
+                        f'{max_lng} {max_lat}, {min_lng} {max_lat}, {min_lng} {min_lat}))',
+                        srid=4326
+                    )
+                
+                # Create Map record
+                map_record = Map(
+                    id=map_id,
+                    name=name,
+                    version=version,
+                    storage_url=storage_url,
+                    file_type=self._detect_file_type(filename),
+                    file_size=len(file_data),
+                    original_filename=filename,
+                    bounds=bounds_geom,
+                    center_point=center_geom,
+                    zoom_levels=zoom_levels or [10, 12, 14, 16, 18],
+                    tiles=tiles,
+                    features={'extracted': map_features, 'count': len(map_features)},
+                    status='active',
+                    uploaded_by=uploaded_by_id,
+                    golf_course_id=golf_course_id
+                )
+                
+                db.add(map_record)
+                db.commit()
+                db.refresh(map_record)
+                
+                logger.info(f"Map {map_id} saved to database")
             
             # Return response matching Title 1 sequence requirements
             return {
@@ -185,7 +217,7 @@ class MapService:
                 'map_id': map_id,
                 'distance_meters': distance_meters,
                 'estimated_time_seconds': estimated_time_seconds,
-                'created_at': datetime.utcnow().isoformat(),
+                'created_at': datetime.now(timezone.utc).isoformat(),
                 'status': 'active'
             }
             
@@ -206,27 +238,98 @@ class MapService:
             logger.error(f"Route creation failed: {e}")
             raise Exception(f"Route creation error: {str(e)}")
     
-    def get_map_data(self, map_id: str) -> Optional[Dict[str, Any]]:
+    def get_map_data(self, map_id: str, db: Optional[Session] = None) -> Optional[Dict[str, Any]]:
         """
-        Retrieve map data by ID.
+        Retrieve map data by ID from database.
         
         Args:
             map_id: Map identifier
+            db: Database session (optional)
             
         Returns:
             Map data dictionary or None
         """
         try:
-            # In real implementation, would query map_features table
-            # For now, return basic structure
-            return {
-                'id': map_id,
-                'status': 'active',
-                'available': True
-            }
+            if db:
+                map_record = db.query(Map).filter(Map.id == map_id).first()
+            else:
+                with get_db_context() as session:
+                    map_record = session.query(Map).filter(Map.id == map_id).first()
+            
+            if map_record:
+                return map_record.to_dict()
+            return None
         except Exception as e:
             logger.error(f"Failed to retrieve map {map_id}: {e}")
             return None
+    
+    def list_maps(
+        self, 
+        filters: Dict[str, Any], 
+        db: Session,
+        skip: int = 0,
+        limit: int = 100
+    ) -> List[Map]:
+        """
+        List maps with optional filters.
+        
+        Args:
+            filters: Filter criteria
+            db: Database session
+            skip: Number of records to skip
+            limit: Maximum number of records to return
+            
+        Returns:
+            List of Map records
+        """
+        query = db.query(Map)
+        
+        if filters.get('status'):
+            query = query.filter(Map.status == filters['status'])
+        if filters.get('golf_course_id'):
+            query = query.filter(Map.golf_course_id == filters['golf_course_id'])
+        if filters.get('file_type'):
+            query = query.filter(Map.file_type == filters['file_type'])
+            
+        return query.order_by(Map.created_at.desc()).offset(skip).limit(limit).all()
+    
+    def update_map_status(self, map_id: str, status: str, db: Session) -> bool:
+        """
+        Update map status.
+        
+        Args:
+            map_id: Map identifier
+            status: New status (active, archived, processing, failed)
+            db: Database session
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            map_record = db.query(Map).filter(Map.id == map_id).first()
+            if map_record:
+                map_record.status = status
+                map_record.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Failed to update map {map_id} status: {e}")
+            db.rollback()
+            return False
+    
+    def archive_map(self, map_id: str, db: Session) -> bool:
+        """
+        Archive a map (soft delete).
+        
+        Args:
+            map_id: Map identifier
+            db: Database session
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return self.update_map_status(map_id, 'archived', db)
     
     def _calculate_map_bounds(
         self, 
@@ -330,6 +433,30 @@ class MapService:
             total_distance += distance
         
         return total_distance
+    
+    def _detect_file_type(self, filename: str) -> str:
+        """
+        Detect file type from filename extension.
+        
+        Args:
+            filename: Original filename
+            
+        Returns:
+            File type string
+        """
+        ext = filename.lower().split('.')[-1] if '.' in filename else 'unknown'
+        type_map = {
+            'geojson': 'geojson',
+            'json': 'geojson',
+            'kml': 'kml',
+            'kmz': 'kmz',
+            'png': 'image',
+            'jpg': 'image',
+            'jpeg': 'image',
+            'tiff': 'image',
+            'tif': 'image'
+        }
+        return type_map.get(ext, 'unknown')
 
 
 # Global service instance

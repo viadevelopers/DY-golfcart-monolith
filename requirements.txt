@@ -7,6 +7,7 @@ python-multipart==0.0.6
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
 alembic==1.13.1
+numpy==1.26.3  # Required for shapely
 geoalchemy2==0.14.2  # PostGIS support
 shapely==2.0.2  # Geospatial operations
 
@@ -18,6 +19,7 @@ python-dotenv==1.0.0
 # Data Validation
 pydantic==2.5.3
 pydantic-settings==2.1.0
+email-validator==2.1.0  # Required for pydantic email validation
 
 # Real-time Communication
 paho-mqtt==1.6.1  # MQTT client

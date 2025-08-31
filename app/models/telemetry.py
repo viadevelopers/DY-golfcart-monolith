@@ -2,7 +2,7 @@
 Telemetry and event models for real-time cart data.
 Includes partitioned tables for efficient time-series data.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Float, JSON, BigInteger, Index, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -61,7 +61,7 @@ class CartTelemetry(Base):
     memory_usage = Column(Float)  # Percentage
     disk_usage = Column(Float)  # Percentage
     
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     
     # Indexes for performance
     __table_args__ = (
@@ -130,8 +130,8 @@ class CartEvent(Base):
     related_route_id = Column(UUID(as_uuid=True))  # If route-related
     related_assignment_id = Column(UUID(as_uuid=True))  # If assignment-related
     
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Indexes for performance
     __table_args__ = (

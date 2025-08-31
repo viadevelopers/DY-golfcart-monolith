@@ -1,10 +1,12 @@
 """
 User models for manufacturer and golf course users.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
+import uuid
 from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, composite
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -16,16 +18,16 @@ class ManufacturerUser(Base):
     __tablename__ = "manufacturer_users"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    email = Column(String(100), unique=True, nullable=False, index=True)
-    name = Column(String(100), nullable=False)
+    email: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
     phone = Column(String(20))
     department = Column(String(50))
-    password_hash = Column(Text, nullable=False)
-    is_active = Column(Boolean, default=True)
-    is_superuser = Column(Boolean, default=False)
-    last_login = Column(DateTime)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    password_hash:Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_superuser: Mapped[str] = mapped_column(Boolean, default=False)
+    last_login:Mapped[datetime] = mapped_column(DateTime)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     created_golf_courses = relationship("GolfCourse", back_populates="created_by_user")
@@ -46,19 +48,19 @@ class GolfCourseUser(Base):
     
     __tablename__ = "golf_course_users"
     
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    golf_course_id = Column(UUID(as_uuid=True), ForeignKey("golf_courses.id"), nullable=False)
-    email = Column(String(100), unique=True, nullable=False, index=True)
-    name = Column(String(100), nullable=False)
+    id:Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    golf_course_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("golf_courses.id"), nullable=False)
+    email:Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    name:Mapped[str] = mapped_column(String(100), nullable=False)
     phone = Column(String(20))
     position = Column(String(50))
-    password_hash = Column(Text, nullable=False)
-    is_active = Column(Boolean, default=True)
-    is_admin = Column(Boolean, default=False)  # Golf course admin
+    password_hash:Mapped[str] = mapped_column(Text, nullable=False)
+    is_active:Mapped[bool] = mapped_column(Boolean, default=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)  # Golf course admin
     permissions = Column(Text)  # JSON string of permissions
-    last_login = Column(DateTime)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_login:Mapped[datetime] = mapped_column(DateTime)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
     # Relationships
     golf_course = relationship("GolfCourse", back_populates="users")

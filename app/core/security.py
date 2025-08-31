@@ -205,3 +205,39 @@ async def require_golf_course(
             detail="Golf course access required"
         )
     return current_user
+
+
+async def get_websocket_user(
+    token: str,
+    db: Session
+) -> AuthContext:
+    """
+    Get authenticated user for WebSocket connections.
+    Similar to get_current_user but works with raw token strings.
+    """
+    try:
+        payload = decode_token(token)
+        
+        user_id = payload.get("user_id")
+        user_type = payload.get("user_type")
+        email = payload.get("email")
+        golf_course_id = payload.get("golf_course_id")
+        
+        if not user_id or not user_type:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid authentication credentials",
+            )
+        
+        return AuthContext(
+            user_id=user_id,
+            user_type=user_type,
+            email=email,
+            golf_course_id=golf_course_id,
+            permissions=payload.get("permissions", [])
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+        )

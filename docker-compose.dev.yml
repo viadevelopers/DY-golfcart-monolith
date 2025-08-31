@@ -1,71 +1,178 @@
 services:
+  # Main Application Service
   golfcart-monolith:
     build:
       context: .
       dockerfile: Dockerfile.dev
+      args:
+        - DEV_MODE=true
     container_name: dy-golfcart-monolith
     ports:
       - "8000:8000"
+    env_file:
+      - .env.docker
     environment:
-      # Database
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/golfcart_db
-      
-      # Redis
-      - REDIS_URL=redis://redis:6379/0
-      
-      # MQTT Configuration (EMQX Cloud)
-      - MQTT_BROKER_URL=emqx.dev.viasoft.ai
-      - MQTT_PORT=8883
-      - MQTT_USERNAME=admin
-      - MQTT_PASSWORD=public
-      - MQTT_CLIENT_ID=dy-golfcart-backend
-      - MQTT_USE_TLS=true
-      - MQTT_ENABLED=true
-      
-      # JWT Secret (change in production)
-      - SECRET_KEY=dy-golfcart-secret-key-change-in-production
-      
-      # Application
+      # Override specific development settings
+      - ENVIRONMENT=development
+      - DOCKER_CONTAINER=true
       - DEBUG=true
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=DEBUG
+      - PYTHONPATH=/workspace
+      # Hot reload for development
+      - WATCHFILES_FORCE_POLLING=true
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
-      - ./app:/app
-      - ./uploads:/uploads  # Local file storage for MVP
+      # Mount the entire project directory to maintain module structure
+      - .:/workspace:cached
+      - ./uploads:/uploads:delegated
+      # Prevent overwriting of venv
+      - /workspace/.venv
+      - /workspace/app/__pycache__
     networks:
       - app-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    # Development command with hot reload
+    working_dir: /workspace
+    command:
+      [
+        "uvicorn",
+        "app.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload",
+        "--reload-dir",
+        "/workspace",
+      ]
 
+  # Main Database
   postgres:
-    image: postgis/postgis:15-3.3  # PostGIS enabled PostgreSQL
+    image: postgis/postgis:15-3.3 # PostGIS enabled PostgreSQL
     container_name: dy-postgres
     ports:
-      - "5432:5432"
+      - "5435:5432"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_DB=golfcart_db
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+      - ./init-db.sh:/docker-entrypoint-initdb.d/01-init-db.sh:ro
+      - ./scripts/dev-data.sql:/docker-entrypoint-initdb.d/02-dev-data.sql:ro
     networks:
       - app-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d golfcart_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Performance tuning for development
+    command:
+      - postgres
+      - -c
+      - "shared_preload_libraries=postgis-3"
+      - -c
+      - "max_connections=200"
+      - -c
+      - "shared_buffers=256MB"
+      - -c
+      - "effective_cache_size=1GB"
+      - -c
+      - "work_mem=4MB"
+      - -c
+      - "maintenance_work_mem=64MB"
+      - -c
+      - "random_page_cost=1.1"
+      - -c
+      - "temp_file_limit=1GB"
+      - -c
+      - "log_min_duration_statement=200"
+      - -c
+      - "log_connections=on"
+      - -c
+      - "log_disconnections=on"
+      - -c
+      - "log_lock_waits=on"
 
+  # Test Database (separate from main DB)
+  postgres-test:
+    image: postgis/postgis:15-3.3
+    container_name: dy-postgres-test
+    ports:
+      - "5436:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=golfcart_test
+      - POSTGRES_INITDB_ARGS=--encoding=UTF-8
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/01-init-db.sh:ro
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d golfcart_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Optimized for testing (faster, less durable)
+    command:
+      - postgres
+      - -c
+      - "shared_preload_libraries=postgis-3"
+      - -c
+      - "fsync=off"
+      - -c
+      - "synchronous_commit=off"
+      - -c
+      - "full_page_writes=off"
+      - -c
+      - "checkpoint_completion_target=0.9"
+      - -c
+      - "wal_buffers=32MB"
+      - -c
+      - "shared_buffers=128MB"
+
+  # Redis for Caching and Sessions
   redis:
     image: redis:7-alpine
     container_name: dy-redis
     ports:
       - "6379:6379"
+    environment:
+      - REDIS_PASSWORD=redis_dev_password
     volumes:
       - redis_data:/data
+      - ./config/redis-dev.conf:/usr/local/etc/redis/redis.conf:ro
     networks:
       - app-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    # Development-optimized Redis configuration
+    command: redis-server /usr/local/etc/redis/redis.conf --appendonly yes --requirepass redis_dev_password
 
-  # Optional: pgAdmin for database management
+  # Database Administration Tool
   pgadmin:
     image: dpage/pgadmin4:latest
     container_name: dy-pgadmin
@@ -74,14 +181,100 @@ services:
     environment:
       - PGADMIN_DEFAULT_EMAIL=admin@dygolfcart.com
       - PGADMIN_DEFAULT_PASSWORD=admin
+      - PGADMIN_CONFIG_SERVER_MODE=False
+      - PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED=False
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./config/pgadmin-servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-test:
+        condition: service_healthy
     networks:
       - app-network
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:80/misc/ping",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Redis Administration Tool
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: dy-redis-commander
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379:0:redis_dev_password
+      - HTTP_USER=admin
+      - HTTP_PASSWORD=admin
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Development Tools Container
+  devtools:
+    image: python:3.12.3-slim
+    container_name: dy-devtools
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:cached
+      - devtools_cache:/root/.cache
+    networks:
+      - app-network
+    profiles:
+      - tools
+    command: >
+      bash -c "
+        apt-get update && apt-get install -y curl wget git vim nano htop &&
+        pip install --upgrade pip setuptools wheel &&
+        pip install black flake8 isort mypy pytest pytest-cov pre-commit &&
+        tail -f /dev/null
+      "
     restart: unless-stopped
 
 networks:
   app-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+    labels:
+      - "com.dygolfcart.environment=development"
+      - "com.dygolfcart.project=golfcart-monolith"
 
 volumes:
   postgres_data:
+    driver: local
+    labels:
+      - "com.dygolfcart.data=postgres-main"
+  postgres_test_data:
+    driver: local
+    labels:
+      - "com.dygolfcart.data=postgres-test"
   redis_data:
+    driver: local
+    labels:
+      - "com.dygolfcart.data=redis"
+  pgadmin_data:
+    driver: local
+    labels:
+      - "com.dygolfcart.data=pgadmin"
+  devtools_cache:
+    driver: local
+    labels:
+      - "com.dygolfcart.data=devtools-cache"

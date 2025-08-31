@@ -3,9 +3,9 @@ Map management API endpoints.
 Independent map lifecycle as per Title 1 sequence diagram.
 """
 
-from typing import List, Optional
-from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from typing import List, Optional, Dict, Any
+from uuid import UUID, uuid4
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query, Body
 from sqlalchemy.orm import Session
 import json
 
@@ -13,6 +13,7 @@ from app.core.database import get_db
 from app.core.security import AuthContext, require_manufacturer, get_current_user
 from app.services.map_service import map_service
 from app.services.s3_service import s3_service
+from app.models.map import Map
 
 router = APIRouter()
 
@@ -24,6 +25,7 @@ async def upload_map(
     version: str = Form(..., description="Map version"),
     center_lat: Optional[float] = Form(None, description="Map center latitude"),
     center_lng: Optional[float] = Form(None, description="Map center longitude"),
+    zoom_levels: Optional[List[int]] = Form(None, description="Initial zoom level"),
     current_user: AuthContext = Depends(require_manufacturer)
 ):
     """
@@ -36,14 +38,17 @@ async def upload_map(
         # Read file data
         file_data = await file.read()
         
-        # Process map upload (MS → S3 → map_features)
+        # Process map upload (MS → S3 → maps table)
         result = map_service.process_map_upload(
             file_data=file_data,
-            filename=file.filename,
+            filename=file.filename if file.filename else uuid4().hex,
             name=name,
             version=version,
             center_lat=center_lat,
             center_lng=center_lng,
+            zoom_levels=zoom_levels,
+            uploaded_by_id=str(current_user.user_id) if current_user else None,
+            golf_course_id=None  # Can be added later if needed
         )
         
         # Return response matching Title 1 sequence
@@ -206,4 +211,146 @@ async def get_route(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to retrieve route: {str(e)}"
+        )
+
+
+@router.get("/", status_code=status.HTTP_200_OK)
+async def list_maps(
+    status: Optional[str] = Query(None, description="Filter by status (active, archived, processing, failed)"),
+    golf_course_id: Optional[str] = Query(None, description="Filter by golf course ID"),
+    file_type: Optional[str] = Query(None, description="Filter by file type (geojson, kml, image)"),
+    skip: int = Query(0, ge=0, description="Number of records to skip"),
+    limit: int = Query(100, le=1000, description="Maximum number of records"),
+    current_user: AuthContext = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    List all maps with filtering and pagination.
+    
+    Returns maps from database with optional filters.
+    """
+    try:
+        filters = {
+            'status': status,
+            'golf_course_id': golf_course_id,
+            'file_type': file_type
+        }
+        
+        maps = map_service.list_maps(filters, db, skip, limit)
+        
+        # Convert to dict for response
+        return {
+            "items": [map_record.to_dict() for map_record in maps],
+            "total": len(maps),
+            "skip": skip,
+            "limit": limit,
+            "status": "success"
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list maps: {str(e)}"
+        )
+
+
+@router.get("/{map_id}", status_code=status.HTTP_200_OK)
+async def get_map(
+    map_id: str,
+    current_user: AuthContext = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get detailed map information by ID.
+    
+    Returns complete map data from database.
+    """
+    try:
+        map_data = map_service.get_map_data(map_id, db)
+        
+        if not map_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Map not found"
+            )
+        
+        return map_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to retrieve map: {str(e)}"
+        )
+
+
+@router.patch("/{map_id}/status", status_code=status.HTTP_200_OK)
+async def update_map_status(
+    map_id: str,
+    status: str = Body(..., pattern="^(active|archived|processing|failed)$", description="New status"),
+    current_user: AuthContext = Depends(require_manufacturer),
+    db: Session = Depends(get_db)
+):
+    """
+    Update map status (archive, activate, etc.).
+    
+    Only manufacturer users can update map status.
+    """
+    try:
+        success = map_service.update_map_status(map_id, status, db)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Map not found or update failed"
+            )
+        
+        return {
+            "map_id": map_id,
+            "status": status,
+            "message": f"Map status updated to {status}"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update map status: {str(e)}"
+        )
+
+
+@router.delete("/{map_id}", status_code=status.HTTP_200_OK)
+async def archive_map(
+    map_id: str,
+    current_user: AuthContext = Depends(require_manufacturer),
+    db: Session = Depends(get_db)
+):
+    """
+    Archive a map (soft delete).
+    
+    Sets map status to 'archived'. Only manufacturer users can archive maps.
+    """
+    try:
+        success = map_service.archive_map(map_id, db)
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Map not found or archive failed"
+            )
+        
+        return {
+            "map_id": map_id,
+            "status": "archived",
+            "message": "Map successfully archived"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to archive map: {str(e)}"
         )
