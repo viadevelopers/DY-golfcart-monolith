@@ -76,7 +76,6 @@ class Settings(BaseSettings):
     # DATABASE CONFIGURATION (PostgreSQL with PostGIS)
     # ============================================================================= 
     DATABASE_URL: str = Field(
-        default="postgresql://postgres:postgres@localhost:5432/golfcart_db",
         description="Main database connection URL"
     )
     TEST_DATABASE_URL: Optional[str] = Field(
@@ -98,7 +97,6 @@ class Settings(BaseSettings):
     # REDIS CONFIGURATION (Caching and Sessions)
     # =============================================================================
     REDIS_URL: str = Field(
-        default="redis://localhost:6379/0",
         description="Redis connection URL"
     )
     REDIS_TTL: int = Field(default=300, description="Default TTL in seconds")
@@ -108,20 +106,12 @@ class Settings(BaseSettings):
     # SECURITY & AUTHENTICATION 
     # =============================================================================
     SECRET_KEY: str = Field(
-        default="dy-golfcart-secret-key-change-in-production",
         description="JWT signing secret"
     )
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     
-    @validator('SECRET_KEY')
-    def validate_secret_key(cls, v: str, values: dict) -> str:
-        """Ensure secret key is changed in production."""
-        env = values.get('ENVIRONMENT', 'development')
-        if env == 'production' and 'change-in-production' in v:
-            raise ValueError('SECRET_KEY must be changed in production')
-        return v
     
     # =============================================================================
     # MQTT CONFIGURATION (Real-time Communication)
@@ -130,8 +120,8 @@ class Settings(BaseSettings):
     MQTT_BROKER_URL: str = Field(default="emqx.dev.viasoft.ai", description="MQTT broker URL")
     MQTT_PORT: int = Field(default=8883, description="MQTT port (8883 for TLS)")
     MQTT_WS_PORT: int = Field(default=8084, description="WebSocket port")
-    MQTT_USERNAME: Optional[str] = Field(default="admin", description="MQTT username")
-    MQTT_PASSWORD: Optional[str] = Field(default="public", description="MQTT password")
+    MQTT_USERNAME: Optional[str] = Field(default=None, description="MQTT username")
+    MQTT_PASSWORD: Optional[str] = Field(default=None, description="MQTT password")
     MQTT_CLIENT_ID: str = Field(default="dy-golfcart-backend", description="MQTT client ID")
     MQTT_KEEPALIVE: int = 60
     MQTT_QOS: int = 1
